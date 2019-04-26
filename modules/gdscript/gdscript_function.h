@@ -304,6 +304,8 @@ public:
 	int get_code_size() const;
 	Variant get_constant(int p_idx) const;
 	StringName get_global_name(int p_idx) const;
+	int get_global_name_count();
+	int get_constant_count();
 	StringName get_name() const;
 	int get_max_stack_size() const;
 	int get_default_argument_count() const;

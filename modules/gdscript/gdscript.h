@@ -164,6 +164,7 @@ public:
 	const Map<StringName, MemberInfo> &debug_get_member_indices() const { return member_indices; }
 	const Map<StringName, GDScriptFunction *> &debug_get_member_functions() const; //this is debug only
 	StringName debug_get_member_by_index(int p_idx) const;
+	int debug_get_member_index(const StringName &p_member);
 
 	Variant _new(const Variant **p_args, int p_argcount, Variant::CallError &r_error);
 	virtual bool can_instance() const;

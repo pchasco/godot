@@ -1617,6 +1617,14 @@ StringName GDScriptFunction::get_global_name(int p_idx) const {
 	return global_names[p_idx];
 }
 
+int GDScriptFunction::get_global_name_count() {
+	return global_names.size();
+}
+
+int GDScriptFunction::get_constant_count() {
+	return constants.size();
+}
+
 int GDScriptFunction::get_default_argument_count() const {
 
 	return _default_arg_count;

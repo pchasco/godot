@@ -66,7 +66,7 @@ logs/
 .sconf_temp
 .sconsign.dblite
 *.pyc
-
+.mypy_cache/
 
 # https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 ## Ignore Visual Studio temporary files, build results, and
@@ -323,3 +323,5 @@ platform/windows/godot_res.res
 # compile commands (https://clang.llvm.org/docs/JSONCompilationDatabase.html)
 compile_commands.json
 
+# temporary while developing gdscript to c transpiler
+modules/gd2c/

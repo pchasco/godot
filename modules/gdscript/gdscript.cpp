@@ -853,6 +853,16 @@ StringName GDScript::debug_get_member_by_index(int p_idx) const {
 	return "<error>";
 }
 
+int GDScript::debug_get_member_index(const StringName &p_member) {
+
+	for (const Map<StringName, MemberInfo>::Element *E = member_indices.front(); E; E = E->next()) {
+		if (E->key() == p_member)
+			return E->get().index;
+	}
+
+	return -1;
+}
+
 Ref<GDScript> GDScript::get_base() const {
 
 	return base;
