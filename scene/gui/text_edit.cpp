@@ -3505,6 +3505,10 @@ void TextEdit::_gui_input(const Ref<InputEvent> &p_gui_input) {
 			} break;
 			case KEY_Z: {
 
+				if (readonly) {
+					break;
+				}
+
 				if (!k->get_command()) {
 					scancode_handled = false;
 					break;
@@ -3516,6 +3520,10 @@ void TextEdit::_gui_input(const Ref<InputEvent> &p_gui_input) {
 					undo();
 			} break;
 			case KEY_Y: {
+
+				if (readonly) {
+					break;
+				}
 
 				if (!k->get_command()) {
 					scancode_handled = false;
