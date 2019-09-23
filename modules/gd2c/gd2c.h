@@ -4,6 +4,10 @@
 #include "core/reference.h"
 #include "modules/gdnative/include/gdnative/gdnative.h"
 
+#ifndef memnew_placement_custom
+#define memnew_placement_custom(m_placement, m_class, m_constr) _post_initialize(new (m_placement, sizeof(m_class), "") m_constr)
+#endif
+
 /*
 	void variant_get_named(const void *p_self, const void *p_name, void *p_dest, bool *r_error);
 	void variant_set_named(void *p_self, const void *p_name, const void *p_value, bool *r_error);
@@ -14,14 +18,15 @@
 */
 
 extern "C" {
-	void GDAPI gd2c_test(godot_variant *p_in, godot_variant *p_dest);
+	void GDAPI gd2c_test(godot_variant *r_dest, godot_variant *p_in);
+	//godot_error GDAPI gd2c_variant_decode(godot_variant *r_variant, const uint8_t *p_buffer, int p_len, int *r_len, godot_bool p_allow_objects);
 }
 
 struct gd2c_api_1_0 {
 	int major;
 	int minor;
 
-	godot_variant (*test)(godot_variant *in_value, godot_variant *out_value);
+	void GDAPI (*test)(godot_variant *r_dest, godot_variant *p_in);
 };
 
 class GD2CApi : public Reference {

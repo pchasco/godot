@@ -20,7 +20,7 @@ extern "C" {
 extern const struct gd2c_api_1_0 __api10 = {
 	1,
 	0,
-	
+	gd2c_test
 };
 
 
