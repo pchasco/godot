@@ -7,12 +7,12 @@ struct gd2c_api_1_0 {
 	int major;
 	int minor;
 
-	void GDAPI (*variant_get_named)(const void *p_self, const void *p_name, void *p_dest, bool *r_error);
-	void GDAPI (*variant_set_named)(void *p_self, const void *p_name, const void *p_value, bool *r_error);
-	void GDAPI (*variant_get)(const void *p_instance, const void *p_index, void *p_dest, bool *r_error);
-	void GDAPI (*variant_set)(void *p_instance, const void *p_index, const void *p_value, bool *r_error);
-	godot_error GDAPI (*variant_decode)(void *r_variant, const uint8_t *p_buffer, int p_len, int *r_len, bool p_allow_objects);
-	void GDAPI (*resource_load)(void *r_result, const void *p_path);
+	void GDAPI (*variant_get_named)(const godot_variant *p_self, const godot_string *p_name, godot_variant *p_dest, godot_bool *r_error);
+	void GDAPI (*variant_set_named)(godot_variant *p_self, const godot_string *p_name, const godot_variant *p_value, godot_bool *r_error);
+	void GDAPI (*variant_get)(const godot_variant *p_self, const godot_variant *p_index, godot_variant *p_dest, godot_bool *r_error);
+	void GDAPI (*variant_set)(godot_variant *p_self, const godot_variant *p_index, const godot_variant *p_value, godot_bool *r_error);
+	godot_error GDAPI (*variant_decode)(godot_variant *r_variant, const uint8_t *p_buffer, int p_len, int *r_len, godot_bool p_allow_objects);
+	void GDAPI (*resource_load)(godot_variant *r_result, const godot_string *p_path);
 };
 
 #endif
