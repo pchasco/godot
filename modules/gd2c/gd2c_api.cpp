@@ -27,22 +27,6 @@ extern "C" {
 		self->set_named(*name, *value, r_error);
 	}
 
-	void GDAPI gd2c_variant_get(const godot_variant *p_self, const godot_variant *p_index, godot_variant *p_dest, godot_bool *r_error) {
-		Variant *self = (Variant *)p_self;
-		Variant *index = (Variant *)p_index;
-		Variant *dest = (Variant *)p_dest;
-
-		*dest = self->get(*index, r_error);
-	}
-
-	void GDAPI gd2c_variant_set(godot_variant *p_self, const godot_variant *p_index, const godot_variant *p_value, godot_bool *r_error) {
-		Variant *self = (Variant *)p_self;
-		Variant *index = (Variant *)p_index;
-		Variant *value = (Variant *)p_value;
-
-		self->set(*index, *value, r_error);
-	}
-
 	godot_error GDAPI gd2c_variant_decode(godot_variant *r_variant, const uint8_t *p_buffer, int p_len, int *r_len, godot_bool p_allow_objects) {
 		Variant *ret = (Variant *)r_variant;
 		return (godot_error) decode_variant(*ret, p_buffer, p_len, r_len, p_allow_objects);
@@ -60,8 +44,6 @@ extern const struct gd2c_api_1_0 __api10 = {
 	0,
 	gd2c_variant_get_named,
 	gd2c_variant_set_named,
-	gd2c_variant_get,
-	gd2c_variant_set,
 	gd2c_variant_decode,
 	gd2c_resource_load
 };
