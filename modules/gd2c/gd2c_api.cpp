@@ -11,17 +11,17 @@
 #include "gd2c_api_struct.h"
 
 extern "C" {
-	void GDAPI gd2c_variant_get_named(const godot_variant *p_self, const godot_string *p_name, godot_variant *p_dest, godot_bool *r_error) {
+	void GDAPI gd2c_variant_get_named(const godot_variant *p_self, const godot_string_name *p_name, godot_variant *p_dest, godot_bool *r_error) {
 		Variant *self = (Variant *)p_self;
-		String *name = (String *)p_name;
+		StringName *name = (StringName *)p_name;
 		Variant *dest = (Variant *)p_dest;
 
 		*dest = self->get_named(*name, r_error);
 	}
 
-	void GDAPI gd2c_variant_set_named(godot_variant *p_self, const godot_string *p_name, const godot_variant *p_value, godot_bool *r_error) {
+	void GDAPI gd2c_variant_set_named(godot_variant *p_self, const godot_string_name *p_name, const godot_variant *p_value, godot_bool *r_error) {
 		Variant *self = (Variant *)p_self;
-		String *name = (String *)p_name;
+		StringName *name = (StringName *)p_name;
 		Variant *value = (Variant *)p_value;
 
 		self->set_named(*name, *value, r_error);
@@ -37,6 +37,32 @@ extern "C" {
 		const String *path = (const String *)p_path;
 		*result = ResourceLoader::load(*path);
 	}
+
+	void GDAPI gd2c_variant_convert(godot_variant *r_result, godot_int variant_type, const godot_variant **p_args, int p_argcount, godot_variant_call_error *r_error) {
+		Variant *result = (Variant *)r_result;
+		Variant::CallError error;
+		*result = Variant::construct((Variant::Type)variant_type, (const Variant **)p_args, p_argcount, error);
+		if (r_error) {
+			r_error->error = (godot_variant_call_error_error)error.error;
+			r_error->argument = error.argument;
+			r_error->expected = (godot_variant_type)error.expected;
+		}		
+	}
+
+	void GDAPI gd2c_object_get_property(godot_variant *r_result, godot_object *p_instance, godot_string_name *p_index) {
+		Variant *result = (Variant *)r_result;
+		Object *instance = (Object *)p_instance;
+		StringName *index = (StringName *)p_index;
+		ClassDB::get_property(instance, *index, *result);
+	}
+
+	void GDAPI gd2c_object_set_property(godot_object *p_instance, godot_string_name *p_index, godot_variant *p_value) {
+		Variant *value = (Variant *)p_value;
+		Object *instance = (Object *)p_instance;
+		StringName *index = (StringName *)p_index;
+		bool valid;
+		ClassDB::set_property(instance, *index, *value, &valid);
+	}
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -45,7 +71,10 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_variant_get_named,
 	gd2c_variant_set_named,
 	gd2c_variant_decode,
-	gd2c_resource_load
+	gd2c_resource_load,
+	gd2c_variant_convert,
+	gd2c_object_get_property,
+	gd2c_object_set_property
 };
 
 
