@@ -7,6 +7,7 @@
 #include "core/variant_parser.h"
 #include "core/io/resource_loader.h"
 #include "core/ustring.h"
+#include "modules/gdscript/gdscript_functions.h"
 
 #include "gd2c_api_struct.h"
 
@@ -38,10 +39,10 @@ extern "C" {
 		*result = ResourceLoader::load(*path);
 	}
 
-	void GDAPI gd2c_variant_convert(godot_variant *r_result, godot_int variant_type, const godot_variant **p_args, int p_argcount, godot_variant_call_error *r_error) {
+	void GDAPI gd2c_variant_convert(godot_variant *r_result, godot_int variant_type, const godot_variant **p_args, int p_arg_count, godot_variant_call_error *r_error) {
 		Variant *result = (Variant *)r_result;
 		Variant::CallError error;
-		*result = Variant::construct((Variant::Type)variant_type, (const Variant **)p_args, p_argcount, error);
+		*result = Variant::construct((Variant::Type)variant_type, (const Variant **)p_args, p_arg_count, error);
 		if (r_error) {
 			r_error->error = (godot_variant_call_error_error)error.error;
 			r_error->argument = error.argument;
@@ -63,6 +64,17 @@ extern "C" {
 		bool valid;
 		ClassDB::set_property(instance, *index, *value, &valid);
 	}
+
+	void GDAPI gd2c_call_gdscript_builtin(int p_func, const godot_variant ** p_args, godot_int p_arg_count, godot_variant *r_result, godot_variant_call_error *r_error) {
+		Variant *result = (Variant *)r_result;
+		Variant::CallError error;
+		GDScriptFunctions::call((GDScriptFunctions::Function)p_func, (const Variant **)p_args, p_arg_count, *result, error);
+		if (r_error) {
+			r_error->error = (godot_variant_call_error_error)error.error;
+			r_error->argument = error.argument;
+			r_error->expected = (godot_variant_type)error.expected;
+		}	
+	}
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -74,7 +86,8 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_resource_load,
 	gd2c_variant_convert,
 	gd2c_object_get_property,
-	gd2c_object_set_property
+	gd2c_object_set_property,
+	gd2c_call_gdscript_builtin
 };
 
 

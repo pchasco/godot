@@ -15,6 +15,7 @@ struct gd2c_api_1_0 {
 	void GDAPI (*variant_convert)(godot_variant *r_result, godot_int variant_type, const godot_variant **p_args, int p_len, godot_variant_call_error *r_error);
 	void GDAPI (*object_get_property)(godot_variant *r_result, godot_object *p_instance, godot_string_name *p_index);
 	void GDAPI (*object_set_property)(godot_object *p_instance, godot_string_name *p_index, godot_variant *p_value);
+	void GDAPI (*call_gdscript_builtin)(int p_func, const godot_variant ** p_args, godot_int p_arg_count, godot_variant *r_result, godot_variant_call_error *r_error);
 };
 
 #endif
