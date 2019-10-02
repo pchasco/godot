@@ -75,6 +75,28 @@ extern "C" {
 			r_error->expected = (godot_variant_type)error.expected;
 		}	
 	}
+
+	godot_bool GDAPI gd2c_variant_iter_init(godot_variant *p_self, godot_variant *r_iter, godot_bool *r_valid) {
+		Variant *self = (Variant *)p_self;
+		Variant *iter = (Variant *)r_iter;
+		bool *valid = (bool *)r_valid;
+		return (godot_bool) self->iter_init(*iter, *valid);
+	}
+
+	godot_bool GDAPI gd2c_variant_iter_next(godot_variant *p_self, godot_variant *r_iter, godot_bool *r_valid) {
+		Variant *self = (Variant *)p_self;
+		Variant *iter = (Variant *)r_iter;
+		bool *valid = (bool *)r_valid;
+		return (godot_bool) self->iter_next(*iter, *valid);
+	}
+
+	void GDAPI gd2c_variant_iter_get(godot_variant *p_self, godot_variant *r_iter, godot_variant *r_result, godot_bool *r_valid) {
+		Variant *self = (Variant *)p_self;
+		Variant *iter = (Variant *)r_iter;
+		Variant *result = (Variant *)r_result;
+		bool *valid = (bool *)r_valid;
+		*result = self->iter_get(*iter, *valid);
+	}
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -87,7 +109,10 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_variant_convert,
 	gd2c_object_get_property,
 	gd2c_object_set_property,
-	gd2c_call_gdscript_builtin
+	gd2c_call_gdscript_builtin,
+	gd2c_variant_iter_init,
+	gd2c_variant_iter_next,
+	gd2c_variant_iter_get
 };
 
 
