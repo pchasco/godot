@@ -7,6 +7,7 @@
 #include "core/variant_parser.h"
 #include "core/io/resource_loader.h"
 #include "core/ustring.h"
+#include "modules/gdscript/gdscript.h"
 #include "modules/gdscript/gdscript_functions.h"
 
 #include "gd2c_api_struct.h"
@@ -41,12 +42,12 @@ extern "C" {
 
 	void GDAPI gd2c_variant_convert(godot_variant *r_result, godot_int variant_type, const godot_variant **p_args, int p_arg_count, godot_variant_call_error *r_error) {
 		Variant *result = (Variant *)r_result;
-		Variant::CallError error;
-		*result = Variant::construct((Variant::Type)variant_type, (const Variant **)p_args, p_arg_count, error);
-		if (r_error) {
-			r_error->error = (godot_variant_call_error_error)error.error;
-			r_error->argument = error.argument;
-			r_error->expected = (godot_variant_type)error.expected;
+		Variant::CallError err;
+		*result = Variant::construct((Variant::Type)variant_type, (const Variant **)p_args, p_arg_count, err);
+		if (r_error != NULL && err.error != Variant::CallError::Error::CALL_OK) {
+			r_error->error = (godot_variant_call_error_error)err.error;
+			r_error->argument = err.argument;
+			r_error->expected = (godot_variant_type)err.expected;
 		}		
 	}
 
@@ -67,12 +68,12 @@ extern "C" {
 
 	void GDAPI gd2c_call_gdscript_builtin(int p_func, const godot_variant ** p_args, godot_int p_arg_count, godot_variant *r_result, godot_variant_call_error *r_error) {
 		Variant *result = (Variant *)r_result;
-		Variant::CallError error;
-		GDScriptFunctions::call((GDScriptFunctions::Function)p_func, (const Variant **)p_args, p_arg_count, *result, error);
-		if (r_error) {
-			r_error->error = (godot_variant_call_error_error)error.error;
-			r_error->argument = error.argument;
-			r_error->expected = (godot_variant_type)error.expected;
+		Variant::CallError err;
+		GDScriptFunctions::call((GDScriptFunctions::Function)p_func, (const Variant **)p_args, p_arg_count, *result, err);
+		if (r_error != NULL && err.error != Variant::CallError::Error::CALL_OK) {
+			r_error->error = (godot_variant_call_error_error)err.error;
+			r_error->argument = err.argument;
+			r_error->expected = (godot_variant_type)err.expected;
 		}	
 	}
 
@@ -97,6 +98,31 @@ extern "C" {
 		bool *valid = (bool *)r_valid;
 		*result = self->iter_get(*iter, *valid);
 	}
+
+	void GDAPI gd2c_get_gdscript_nativeclass(godot_variant *r_dest, godot_string_name *p_name) {
+		Variant *dest = (Variant *)r_dest;
+		StringName *name = (StringName *)p_name;
+		Ref<GDScriptNativeClass> ref = memnew(GDScriptNativeClass(*name));
+		if (!ref.is_null()) {
+			memnew_placement_custom(dest, Variant, Variant(ref.get_ref_ptr()));
+		} else {
+			// WTF
+		}
+	}
+
+	void GDAPI gd2c_variant_call(godot_variant *p_self, godot_string_name *p_method_name, godot_int p_argc, godot_variant **p_args, godot_variant *r_result, godot_variant_call_error *r_error) {
+		Variant *self = (Variant *)p_self;
+		StringName *name = (StringName *)p_method_name;
+		Variant *result = (Variant *)r_result;
+		Variant::CallError err;
+
+		self->call_ptr(*name, (const Variant **)p_args, p_argc, result, err);
+		if (r_error != NULL && err.error) {
+			r_error->error = (godot_variant_call_error_error)err.error;
+			r_error->argument = err.argument;
+			r_error->expected = (godot_variant_type)err.expected;
+		}			
+	}
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -112,7 +138,9 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_call_gdscript_builtin,
 	gd2c_variant_iter_init,
 	gd2c_variant_iter_next,
-	gd2c_variant_iter_get
+	gd2c_variant_iter_get,
+	gd2c_get_gdscript_nativeclass,
+	gd2c_variant_call
 };
 
 

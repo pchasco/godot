@@ -19,6 +19,8 @@ struct gd2c_api_1_0 {
 	godot_bool GDAPI (*variant_iter_init)(godot_variant *p_self, godot_variant *r_iter, godot_bool *r_valid);
 	godot_bool GDAPI (*variant_iter_next)(godot_variant *p_self, godot_variant *r_iter, godot_bool *r_valid);
 	void GDAPI (*variant_iter_get)(godot_variant *p_self, godot_variant *r_iter, godot_variant *r_result, godot_bool *r_valid);
+	void GDAPI (*get_gdscript_nativeclass)(godot_variant *r_dest, godot_string_name *p_name);
+	void GDAPI (*variant_call)(godot_variant *p_self, godot_string_name *p_method_name, godot_int p_argc, godot_variant **p_args, godot_variant *r_result, godot_variant_call_error *r_error);
 };
 
 #endif
