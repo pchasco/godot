@@ -123,6 +123,51 @@ extern "C" {
 			r_error->expected = (godot_variant_type)err.expected;
 		}			
 	}
+
+	void GDAPI gd2c_extends_test(godot_variant *p_a, godot_variant *p_b, godot_variant *r_result) {
+		Variant *a = (Variant *)p_a;
+		Variant *b = (Variant *)p_b;
+		Variant *dst = (Variant *)r_result;
+
+		bool extends_ok = false;
+		if (a->get_type() == Variant::OBJECT && a->operator Object *() != NULL) {
+			Object *obj_A = *a;
+			Object *obj_B = *b;
+			GDScript *scr_B = Object::cast_to<GDScript>(obj_B);
+
+			if (scr_B) {
+				if (obj_A->get_script_instance() && obj_A->get_script_instance()->get_language() == GDScriptLanguage::get_singleton()) {
+					GDScript *cmp = static_cast<GDScript *>(obj_A->get_script_instance()->get_script().ptr());
+					while (cmp) {
+						if (cmp == scr_B) {
+							extends_ok = true;
+							break;
+						}
+						cmp = static_cast<GDScript *>(cmp->get_base_script().ptr());
+					}
+				}
+			} else {
+				GDScriptNativeClass *nc = Object::cast_to<GDScriptNativeClass>(obj_B);
+				extends_ok = ClassDB::is_parent_class(obj_A->get_class_name(), nc->get_name());
+			}
+		}
+
+		*dst = extends_ok;
+	}
+
+	void GDAPI gd2c_variant_construct(godot_variant *r_result, godot_variant_type p_type, godot_int p_num_args, const godot_variant **p_args, godot_variant_call_error *r_error) {
+		Variant *dst = (Variant *)r_result;
+		Variant::Type type = (Variant::Type) p_type;
+		Variant **args = (Variant **)p_args;
+		Variant::CallError err;
+
+		*dst = Variant::construct(type, (const Variant **)args, p_num_args, err);
+		if (r_error != NULL && err.error) {
+			r_error->error = (godot_variant_call_error_error)err.error;
+			r_error->argument = err.argument;
+			r_error->expected = (godot_variant_type)err.expected;
+		} 
+	}
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -140,7 +185,9 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_variant_iter_next,
 	gd2c_variant_iter_get,
 	gd2c_get_gdscript_nativeclass,
-	gd2c_variant_call
+	gd2c_variant_call,
+	gd2c_extends_test,
+	gd2c_variant_construct
 };
 
 

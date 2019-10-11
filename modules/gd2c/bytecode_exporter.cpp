@@ -82,6 +82,8 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
     StringName instance_type = script->get_instance_base_type();
 	Set<StringName> members;
 	Vector<uint8_t> variantBuffer;
+	Map<String, int> objectJsonIndex;
+	Vector<String> objectJson;
 
 	String json;
 	bool comma1 = false;
@@ -120,9 +122,8 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 	comma1 = true;
 
 	// Godot ClassDB-defined constants
-
+	
 	//populate native classes
-
 	List<StringName> class_list;
 	ClassDB::get_class_list(&class_list);
 	Map<StringName, int> added_globals;
@@ -137,17 +138,19 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 
 		added_globals[s] = added_globals.size();
 
-		if (comma1) json += ",";
-		json += "{";
-		json += "\"source\":\"ClassDB\",";
-		json += "\"original_name\":\"" + s + "\",";
-		json += "\"name\":\"" + n + "\",";
-		json += "\"value\":null,";
-		json += "\"type_code\":null,";
-		json += "\"index\":" + itos(global_index++) + ",";
-		json += "\"kind_code\":" + itos(GDScriptDataType::NATIVE);
-		json += "}";
-		comma1 = true;
+		String js;
+		js += "{";
+		js += "\"source\":\"ClassDB\",";
+		js += "\"original_name\":\"" + s + "\",";
+		js += "\"name\":\"" + n + "\",";
+		js += "\"value\":null,";
+		js += "\"type_code\":null,";
+		js += "\"index\":" + itos(global_index++) + ",";
+		js += "\"kind_code\":" + itos(GDScriptDataType::NATIVE);
+		js += "}";
+
+		objectJsonIndex[s] = objectJson.size();
+		objectJson.push_back(js);
 	}
 
 	//populate singletons
@@ -155,16 +158,43 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 	List<Engine::Singleton> singletons;
 	Engine::get_singleton()->get_singletons(&singletons);
 	for (List<Engine::Singleton>::Element *E = singletons.front(); E; E = E->next()) {
+		bool replace = objectJsonIndex.has(E->get().name);
+		int gi;
+		if (replace) {
+			gi = added_globals[E->get().name];
+		} else {
+			gi = global_index;
+		}
+
+		String js;
+		js += "{";
+		js += "\"source\":\"Singleton\",";
+		js += "\"original_name\":\"" + E->get().name + "\",";
+		js += "\"name\":\"" + E->get().name + "\",";
+		js += "\"value\":null,";
+		js += "\"type_code\":null,";
+		js += "\"index\":" + itos(gi) + ",";
+		js += "\"kind_code\":" + itos(GDScriptDataType::BUILTIN);
+		js += "}";
+
+		if (replace) {
+			// Singletons replace constants that have the same name
+			int object_index = objectJsonIndex[E->get().name];
+			objectJson.set(object_index, js);
+		} else {
+			// No constant with this name so push it back to the end
+			objectJsonIndex[E->get().name] = objectJson.size();
+			objectJson.push_back(js);
+			global_index += 1;
+		}
+	}
+
+	json += ",";
+
+	comma1 = false;
+	for (int i = 0; i < objectJson.size(); ++i) {
 		if (comma1) json += ",";
-		json += "{";
-		json += "\"source\":\"Singleton\",";
-		json += "\"original_name\":\"" + E->get().name + "\",";
-		json += "\"name\":\"" + E->get().name + "\",";
-		json += "\"value\":null,";
-		json += "\"type_code\":null,";
-		json += "\"index\":" + itos(global_index++) + ",";
-		json += "\"kind_code\":" + itos(GDScriptDataType::BUILTIN);
-		json += "}";
+		json += objectJson[i];
 		comma1 = true;
 	}
 
