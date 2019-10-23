@@ -4,6 +4,8 @@
 #include "core/engine.h"
 #include "modules/gdscript/gdscript.h"
 #include "bytecode_exporter.h"
+#include "core/string_builder.h"
+#include "core/os/os.h"
 
 String q(String value) {
     return "\"" + value.json_escape() + "\"";
@@ -47,27 +49,13 @@ int get_member_index(const GDScript &script, const StringName &member) {
 	return script.debug_get_member_indices()[member].index;
 }
 
-int get_global_name_count(const GDScriptFunction &function) {
-	for (int i = 0; i < 10000; ++i) {
-		const StringName &name = function.get_global_name(i);
-		if (name == "<errgname>") {
-			return i;
-		}
-	}
-
-	return -1;
+void trace(int line, const char *text) {
+	char trace_buffer[4096];
+	sprintf(trace_buffer, "%i: %s\n", line, text);
+	OS::get_singleton()->print(String(trace_buffer).utf8().get_data());
 }
 
-int get_constant_count(const GDScriptFunction &function) {
-	for (int i = 0; i < 10000; ++i) {
-		Variant name = function.get_constant(i);
-		if (name == "<errconst>") {
-			return i;
-		}
-	}
-
-	return -1;
-}
+#define TRACE(text) trace(__LINE__, text)
 
 void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path, String output_json_path) {
 	Ref<Script> scr = ResourceLoader::load(input_script_path);
@@ -85,45 +73,48 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 	Map<String, int> objectJsonIndex;
 	Vector<String> objectJson;
 
-	String json;
+	StringBuilder json;
 	bool comma1 = false;
 	bool comma2 = false;
 
-	json += "{";
+	json.append("{");
 
 	// We need the a way to identify global constants by index when compiling the script.
 
 	// Integer constants
-	json += "\"global_constants\":[";
+	TRACE("global_constants");
+	json.append("\"global_constants\":[");
 	int gcc = GlobalConstants::get_global_constant_count();
 	int global_index = 0;
 	comma1 = false;
 	for (int i = 0; i < gcc; ++i) {
 		int value = GlobalConstants::get_global_constant_value(i);
-		if (comma1) json += ",";
-		json += "{";
-		json += "\"source\":\"GlobalConstants\",";
-		json += "\"original_name\":" + q(String(GlobalConstants::get_global_constant_name(i))) + ",";
-		json += "\"name\":" + q(String(GlobalConstants::get_global_constant_name(i))) + ",";
-		json += "\"value\":" + itos(value) + ",";
-		json += "\"type_code\":" + itos(Variant::Type::INT) + ",";
-		json += "\"kind_code\":-1,";
-		json += "\"index\":" + itos(global_index++);
-		json += "}";
+		if (comma1) json.append(",");
+		json.append("{");
+		json.append("\"source\":\"GlobalConstants\",");
+		json.append("\"original_name\":" + q(String(GlobalConstants::get_global_constant_name(i))) + ",");
+		json.append("\"name\":" + q(String(GlobalConstants::get_global_constant_name(i))) + ",");
+		json.append("\"value\":" + itos(value) + ",");
+		json.append("\"type_code\":" + itos(Variant::Type::INT) + ",");
+		json.append("\"kind_code\":-1,");
+		json.append("\"index\":" + itos(global_index++));
+		json.append("}");
 		comma1 = true;
 	}
 
 	// GDSCriptLanguage-defined constants
-	if (comma1) json += ",";
-	json += "{\"source\":\"hard-coded\",\"name\":\"PI\",\"original_name\":\"PI\",\"value\":\"" + rtos(Math_PI) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},";
-	json += "{\"source\":\"hard-coded\",\"name\":\"TAU\",\"original_name\":\"TAU\",\"value\":\"" + rtos(Math_TAU) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},";
-	json += "{\"source\":\"hard-coded\",\"name\":\"INF\",\"original_name\":\"INF\",\"value\":\"" + rtos(Math_INF) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},";
-	json += "{\"source\":\"hard-coded\",\"name\":\"NAN\",\"original_name\":\"NAN\",\"value\":\"" + rtos(Math_NAN) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1}";
+	TRACE("hard coded constants");
+	if (comma1) json.append(",");
+	json.append("{\"source\":\"hard-coded\",\"name\":\"PI\",\"original_name\":\"PI\",\"value\":\"" + rtos(Math_PI) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},");
+	json.append("{\"source\":\"hard-coded\",\"name\":\"TAU\",\"original_name\":\"TAU\",\"value\":\"" + rtos(Math_TAU) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},");
+	json.append("{\"source\":\"hard-coded\",\"name\":\"INF\",\"original_name\":\"INF\",\"value\":\"" + rtos(Math_INF) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1},");
+	json.append("{\"source\":\"hard-coded\",\"name\":\"NAN\",\"original_name\":\"NAN\",\"value\":\"" + rtos(Math_NAN) + "\",\"type_code\":" + itos(Variant::Type::REAL) + ",\"index\":" + itos(global_index++) + ",\"kind_code\":-1}");
 	comma1 = true;
 
 	// Godot ClassDB-defined constants
 	
 	//populate native classes
+	TRACE("native classes");
 	List<StringName> class_list;
 	ClassDB::get_class_list(&class_list);
 	Map<StringName, int> added_globals;
@@ -155,6 +146,7 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 
 	//populate singletons
 
+	TRACE("singletons");
 	List<Engine::Singleton> singletons;
 	Engine::get_singleton()->get_singletons(&singletons);
 	for (List<Engine::Singleton>::Element *E = singletons.front(); E; E = E->next()) {
@@ -189,186 +181,201 @@ void GDScriptBytecodeExporter::export_bytecode_to_file(String input_script_path,
 		}
 	}
 
-	json += ",";
+	json.append(",");
 
 	comma1 = false;
 	for (int i = 0; i < objectJson.size(); ++i) {
-		if (comma1) json += ",";
-		json += objectJson[i];
+		if (comma1) json.append(",");
+		json.append(objectJson[i]);
 		comma1 = true;
 	}
 
-	json += "],";
+	json.append("],");
 
-	json += "\"type\":\"" + instance_type + "\",";
+	json.append("\"type\":\"" + instance_type + "\",");
 
 	if (!script->get_base().is_null()) {
-		json += "\"base_type\":\"" + script->get_base()->get_path() + "\",";
+		json.append("\"base_type\":\"" + script->get_base()->get_path() + "\",");
 	} else {
-		json += "\"base_type\": null,";
+		json.append("\"base_type\": null,");
 	}
 
+	TRACE("members");
 	script->get_members(&members);
 	comma1 = false;
-	json += "\"members\":[";
+	json.append("\"members\":[");
 	for (Set<StringName>::Element *member = members.front(); member; member = member->next()) {
 		GDScriptDataType member_type = script->get_member_type(member->get());
 		int member_index = get_member_index(*script.ptr(), member->get());
 
-		if (comma1) json += ",";
-		json += "{";
-		json += "\"index\":" + itos(member_index) + ",";
-		json += "\"name\":\"" + member->get() + "\",";
-		json += "\"kind\":" + itos(member_type.kind) + ",";
-		json += "\"type\":" + itos(member_type.builtin_type) + ",";
-		json += "\"native_type\":\"" + member_type.native_type + "\",";
-		json += "\"has_type\":";
+		if (comma1) json.append(",");
+		json.append("{");
+		json.append("\"index\":" + itos(member_index) + ",");
+		json.append("\"name\":\"" + member->get() + "\",");
+		json.append("\"kind\":" + itos(member_type.kind) + ",");
+		json.append("\"type\":" + itos(member_type.builtin_type) + ",");
+		json.append("\"native_type\":\"" + member_type.native_type + "\",");
+		json.append("\"has_type\":");
 		if (member_type.has_type) {
-			json += "true";
+			json.append("true");
 		} else {
-			json += "false";
+			json.append("false");
 		}
-		json += "}";
+		json.append("}");
 		comma1 = true;
 	}
-	json += ("],");
+	json.append("],");
 
+	TRACE("class constants");
 	Map<StringName, Variant> constants;
 	script->get_constants(&constants);
 	comma1 = false;
-	json += ("\"constants\":[");
+	json.append("\"constants\":[");
 	for (Map<StringName, Variant>::Element *constant = constants.front(); constant; constant = constant->next()) {
-		if (comma1) json += ",";
+		if (comma1) json.append(",");
 		String vars;
 		VariantWriter::write_to_string(constant->value(), vars);
 
-		json += "{";
-		json += "\"name\":\"" + constant->key() + "\",";
-		json += "\"declaration\":\"" + vars.replace("\"", "\\\"").replace("\n", "\\n") + "\",";
-		json += "\"type\":" + itos(constant->value().get_type()) + ",";
-		json += "\"type_name\":\"" + constant->value().get_type_name(constant->value().get_type()) + "\",";
-		json += "\"data\":[";
+		json.append("{");
+		json.append("\"name\":\"" + constant->key() + "\",");
+		json.append("\"declaration\":\"" + vars.replace("\"", "\\\"").replace("\n", "\\n") + "\",");
+		json.append("\"type\":" + itos(constant->value().get_type()) + ",");
+		json.append("\"type_name\":\"" + constant->value().get_type_name(constant->value().get_type()) + "\",");
+		json.append("\"data\":[");
 
 		variantBuffer.clear();
 		int len = put_var(constant->value(), &variantBuffer);
 		bool comma3 = false;
 		for (int j = 0; j < len; ++j) {
-			if (comma3) json += ",";
-			json += itos(variantBuffer[j]);
+			if (comma3) json.append(",");
+			json.append(itos(variantBuffer[j]));
 			comma3 = true;
 		}
-		json += "]";
-		json += "}";
+		json.append("]");
+		json.append("}");
 		comma1 = true;
 	}
-	json += "],";
+	json.append("],");
 
+	TRACE("class signals");
 	List<MethodInfo> signals;
 	script->get_script_signal_list(&signals);
 	comma1 = false;
-	json += ("\"signals\":[");
+	json.append("\"signals\":[");
 	for (List<MethodInfo>::Element *signal = signals.front(); signal; signal = signal->next()) {
-		if (comma1) json += ",";
-		json += "\"" + signal->get().name + "\"";
+		if (comma1) json.append(",");
+		json.append("\"" + signal->get().name + "\"");
 		comma1 = true;
 	}
-	json += "],";
+	json.append("],");
 
+	TRACE("class methods");
 	List<MethodInfo> methods;
 	script->get_script_method_list(&methods);
-	json += ("\"methods\":[");
+	json.append("\"methods\":[");
 	comma1 = false;
 	for (List<MethodInfo>::Element *method = methods.front(); method; method = method->next()) {
-		if (comma1) json += ",";
-		json += ("{");
-		json += ("\"name\": \"" + method->get().name + "\",");
-		String s = itos(method->get().id);
-		json += ("\"id\": \"" + s + "\",");
+		TRACE("class method");
+		TRACE(method->get().name.utf8().get_data());
 
-		GDScriptFunction *f = ((GDScript *)script.ptr())->get_member_functions()[method->get().name];
-		if (f) {
-			json += "\"return_type\": {";
-			json += "\"type\":" + itos(f->get_return_type().builtin_type) + ",";
-			json += "\"type_name\":\"" + f->get_return_type().native_type + "\",";
-			json += "\"kind\":" + itos(f->get_return_type().kind);
-			json += "},";
-			json += "\"stack_size\":" + itos(f->get_max_stack_size()) + ",";
-			json += "\"parameters\":[";
+		if (script.ptr()->get_member_functions().has(method->get().name)) {
+			GDScriptFunction *f = ((GDScript *)script.ptr())->get_member_functions()[method->get().name];
+			TRACE("  found method...");
+
+			if (comma1) json.append(",");
+			json.append("{");
+			json.append("\"name\": \"" + method->get().name + "\",");
+			String s = itos(method->get().id);
+			json.append("\"id\": \"" + s + "\",");
+			json.append("\"return_type\": {");
+			json.append("\"type\":" + itos(f->get_return_type().builtin_type) + ",");
+			json.append("\"type_name\":\"" + f->get_return_type().native_type + "\",");
+			json.append("\"kind\":" + itos(f->get_return_type().kind));
+			json.append("},");
+			json.append("\"stack_size\":" + itos(f->get_max_stack_size()) + ",");
+			json.append("\"parameters\":[");
 			comma2 = false;
+			TRACE("  arguments:");
 			for (int i = 0; i < f->get_argument_count(); ++i) {
-				if (comma2) json += ",";
-				json += "{";
-				json += "\"name\":\"" + f->get_argument_name(i) + "\",";
-				json += "\"type\":" + itos(f->get_argument_type(i).builtin_type) + ",";
-				json += "\"type_name\":\"" + f->get_argument_type(i).native_type + "\",";
-				json += "\"kind\":" + itos(f->get_argument_type(i).kind);
-				json += "}";
+				TRACE("    argument");
+				if (comma2) json.append(",");
+				json.append("{");
+				json.append("\"name\":\"" + f->get_argument_name(i) + "\",");
+				json.append("\"type\":" + itos(f->get_argument_type(i).builtin_type) + ",");
+				json.append("\"type_name\":\"" + f->get_argument_type(i).native_type + "\",");
+				json.append("\"kind\":" + itos(f->get_argument_type(i).kind));
+				json.append("}");
 				comma2 = true;
 			}
-			json += "],";
+			json.append("],");
 
-			json += "\"default_arguments\": [";
+			json.append("\"default_arguments\": [");
+			TRACE("  default_arguments");
 			comma2 = false;
 			for (int i = 0; i < f->get_default_argument_count(); ++i) {
-				if (comma2) json += ",";
-				json += itos(f->get_default_argument_addr(i));
+				if (comma2) json.append(",");
+				json.append(itos(f->get_default_argument_addr(i)));
 				comma2 = true;
 			}
-			json += "],";
+			json.append("],");
 
-			json += "\"global_names\": [";
+			json.append("\"global_names\": [");
 			comma2 = false;
-			for (int i = 0; i < get_global_name_count(*f); ++i) {
-				if (comma2) json += ",";
-				json += "\"" + f->get_global_name(i) + "\"";
+			for (int i = 0; i < f->get_global_name_count(); ++i) {
+				if (comma2) json.append(",");
+				json.append("\"" + f->get_global_name(i) + "\"");
 				comma2 = true;
 			}
-			json += "],";
+			json.append("],");
 
-			json += "\"constants\":[";
+			TRACE("  constants");
+			json.append("\"constants\":[");
 			comma2 = false;
-			for (int i = 0; i < get_constant_count(*f); ++i) {
-				if (comma2) json += ",";
+			for (int i = 0; i < f->get_constant_count(); ++i) {
+				TRACE("    constant");
+				if (comma2) json.append(",");
 				variantBuffer.clear();
 				int len = put_var(f->get_constant(i), &variantBuffer);
 
 				String declaration;
 				VariantWriter::write_to_string(f->get_constant(i), declaration);
 
-				json += "{";
-				json += "\"index\":" + itos(i) + ",";
-				json += "\"type\":" + itos(f->get_constant(i).get_type()) + ",";
-				json += "\"type_name\":\"" + f->get_constant(i).get_type_name(f->get_constant(i).get_type()) + "\",";
-				json += "\"declaration\":\"" + declaration.replace("\"", "\\\"").replace("\n", "\\\n") + "\",";
-				json += "\"data\":[";
+				json.append("{");
+				json.append("\"index\":" + itos(i) + ",");
+				json.append("\"type\":" + itos(f->get_constant(i).get_type()) + ",");
+				json.append("\"type_name\":\"" + f->get_constant(i).get_type_name(f->get_constant(i).get_type()) + "\",");
+				json.append("\"declaration\":\"" + declaration.replace("\"", "\\\"").replace("\n", "\\\n") + "\",");
+				json.append("\"data\":[");
 				bool comma3 = false;
 				for (int j = 0; j < len; ++j) {
-					if (comma3) json += ",";
-					json += itos(variantBuffer[j]);
+					if (comma3) json.append(",");
+					json.append(itos(variantBuffer[j]));
 					comma3 = true;
 				}
-				json += "]";
-				json += "}";
+				json.append("]");
+				json.append("}");
 				comma2 = true;
 			}
-			json += "],";
+			json.append("],");
 
-			json += "\"bytecode\":[";
+			TRACE("bytecode");
+			json.append("\"bytecode\":[");
 			comma2 = false;
 			for (int i = 0; i < f->get_code_size(); ++i) {
-				if (comma2) json += ",";
-				json += itos(f->get_code()[i]);
+				if (comma2) json.append(",");
+				json.append(itos(f->get_code()[i]));
 				comma2 = true;
 			}
-			json += "]";
+			json.append("]");
+			json.append("}");
+		} else {
+			TRACE("  Method not found. must be derived");
 		}
-
-		json += ("}");
 		comma1 = true;
 	}
-	json += ("]");
+	json.append("]");
 
-	json += ("}");
+	json.append("}");
 
 	String jsonFilename = input_script_path + ".json";
 	FileAccess *f = NULL;

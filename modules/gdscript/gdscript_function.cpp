@@ -1633,10 +1633,18 @@ Variant GDScriptFunction::get_constant(int p_idx) const {
 	return constants[p_idx];
 }
 
+int GDScriptFunction::get_constant_count() const {
+	return constants.size();
+}
+
 StringName GDScriptFunction::get_global_name(int p_idx) const {
 
 	ERR_FAIL_INDEX_V(p_idx, global_names.size(), "<errgname>");
 	return global_names[p_idx];
+}
+
+int GDScriptFunction::get_global_name_count() const {
+	return global_names.size();
 }
 
 int GDScriptFunction::get_default_argument_count() const {

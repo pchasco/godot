@@ -9,8 +9,12 @@
 #include "core/ustring.h"
 #include "modules/gdscript/gdscript.h"
 #include "modules/gdscript/gdscript_functions.h"
+#include "modules/gdnative/nativescript/nativescript.h"
+#include "core/array.h"
+#include "core/string_name.h"
 
 #include "gd2c_api_struct.h"
+#include "stdio.h"
 
 extern "C" {
 	void GDAPI gd2c_variant_get_named(const godot_variant *p_self, const godot_string_name *p_name, godot_variant *p_dest, godot_bool *r_error) {
@@ -125,30 +129,42 @@ extern "C" {
 	}
 
 	void GDAPI gd2c_extends_test(godot_variant *p_a, godot_variant *p_b, godot_variant *r_result) {
-		Variant *a = (Variant *)p_a;
-		Variant *b = (Variant *)p_b;
-		Variant *dst = (Variant *)r_result;
+		const auto *left = (Variant *)p_a;
+		const auto *right = (Variant *)p_b;
+		auto *dst = (Variant *)r_result;
 
 		bool extends_ok = false;
-		if (a->get_type() == Variant::OBJECT && a->operator Object *() != NULL) {
-			Object *obj_A = *a;
-			Object *obj_B = *b;
-			GDScript *scr_B = Object::cast_to<GDScript>(obj_B);
+		if (left->get_type() == Variant::OBJECT && left->operator Object *() != NULL) {
+			Object *leftObject = *left;
+			Object *rightObject = *right;
 
-			if (scr_B) {
-				if (obj_A->get_script_instance() && obj_A->get_script_instance()->get_language() == GDScriptLanguage::get_singleton()) {
-					GDScript *cmp = static_cast<GDScript *>(obj_A->get_script_instance()->get_script().ptr());
-					while (cmp) {
-						if (cmp == scr_B) {
-							extends_ok = true;
-							break;
-						}
-						cmp = static_cast<GDScript *>(cmp->get_base_script().ptr());
+			auto *leftScriptInstance = leftObject->get_script_instance();
+			if (leftScriptInstance && leftScriptInstance->get_language() == NativeScriptLanguage::get_singleton()) {
+				auto *leftNativeScriptInstance = static_cast<NativeScriptInstance *>(leftScriptInstance);
+
+				// Scenario 1
+				// Left = gd2c, Right = gd2c
+				const auto *rightNativeScript = Object::cast_to<NativeScript>(rightObject);
+				if (rightNativeScript) {
+					const auto methodName = StringName("__gd2c_is_class_instanceof");					
+					if (leftNativeScriptInstance->has_method(methodName)) {
+						Variant::CallError err;
+						auto name = Variant(rightNativeScript->get_class_name());
+						Variant *args[] = { &name };
+						auto result = leftNativeScriptInstance->call(methodName, (const Variant **)args, 1, err);
+						*dst = result;
+						return;
 					}
 				}
-			} else {
-				GDScriptNativeClass *nc = Object::cast_to<GDScriptNativeClass>(obj_B);
-				extends_ok = ClassDB::is_parent_class(obj_A->get_class_name(), nc->get_name());
+				
+				// Scenario 2
+				// Left = gd2c, Right = classdb
+				// Scenario 3
+				// Left = classdb, Right = gd2c
+				// Scenario 4
+				// Left = classdb, Right = classdb
+				GDScriptNativeClass *nc = Object::cast_to<GDScriptNativeClass>(rightObject);
+				extends_ok = ClassDB::is_parent_class(leftObject->get_class_name(), nc->get_name());
 			}
 		}
 
@@ -168,6 +184,22 @@ extern "C" {
 			r_error->expected = (godot_variant_type)err.expected;
 		} 
 	}
+
+	void GDAPI gd2c_variant_get(const godot_variant *p_self, const godot_variant *p_index, godot_variant *p_dest, godot_bool *r_valid) {
+		const Variant *self = (Variant *)p_self;
+		const Variant *index = (Variant *)p_index;
+		Variant *dest = (Variant *)p_dest;
+
+		*dest = self->get(*index, r_valid);
+	}	
+
+	void GDAPI gd2c_variant_set(const godot_variant *p_self, const godot_variant *p_index, const godot_variant *p_value, godot_bool *r_valid) {
+		Variant *self = (Variant *)p_self;
+		const Variant *index = (Variant *)p_index;
+		const Variant *value = (Variant *)p_value;
+
+		self->set(*index, *value);
+	}	
 }
 
 extern const struct gd2c_api_1_0 __api10 = {
@@ -187,7 +219,9 @@ extern const struct gd2c_api_1_0 __api10 = {
 	gd2c_get_gdscript_nativeclass,
 	gd2c_variant_call,
 	gd2c_extends_test,
-	gd2c_variant_construct
+	gd2c_variant_construct,
+	gd2c_variant_get,
+	gd2c_variant_set
 };
 
 
