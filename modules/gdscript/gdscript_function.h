@@ -41,6 +41,7 @@
 
 class GDScriptInstance;
 class GDScript;
+class GDScriptOptimizer;
 
 struct GDScriptDataType {
 	bool has_type;
@@ -215,6 +216,7 @@ public:
 
 private:
 	friend class GDScriptCompiler;
+	friend class GDScriptFunctionOptimizer; // would be better if there were a public api to change code
 
 	StringName source;
 

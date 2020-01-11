@@ -1540,6 +1540,12 @@ bool Main::start() {
 
 	} else if (script != "") {
 
+		int process_id = OS::get_singleton()->get_process_id();
+		String process_id_str = itos(process_id);
+		OS::get_singleton()->print("Waiting for <enter> key\n");
+		OS::get_singleton()->print(process_id_str.utf8().get_data());
+		OS::get_singleton()->get_stdin_string(true);
+
 		Ref<Script> script_res = ResourceLoader::load(script);
 		ERR_FAIL_COND_V_MSG(script_res.is_null(), false, "Can't load script: " + script);
 
