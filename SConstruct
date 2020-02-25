@@ -474,7 +474,7 @@ if selected_platform in platform_list:
         else:
             env.Append(CPPDEFINES=['_3D_DISABLED'])
     if env['gdscript']:
-        env.Append(CPPDEFINES=['GDSCRIPT_ENABLED'])
+        env.Append(CPPDEFINES=['GDSCRIPT_ENABLED', 'GDSCRIPT_ENABLE_OPTIMIZATION'])
     if env['disable_advanced_gui']:
         if env['tools']:
             print("Build option 'disable_advanced_gui=yes' cannot be used with 'tools=yes' (editor), only with 'tools=no' (export template).")

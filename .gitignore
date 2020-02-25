@@ -75,6 +75,7 @@ logs/
 .sconf_temp
 .sconsign.dblite
 *.pyc
+.mypy_cache/
 
 # https://github.com/github/gitignore/blob/master/VisualStudio.gitignore
 ## Ignore Visual Studio temporary files, build results, and

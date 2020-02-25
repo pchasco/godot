@@ -1543,6 +1543,21 @@ Variant GDScriptFunction::call(GDScriptInstance *p_instance, const Variant **p_a
 				OPCODE_BREAK;
 			}
 
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+			OPCODE(OPCODE_BOX_REAL) {
+				GET_VARIANT_PTR(src, 1);
+				_reg_real[_code_ptr[ip + 2] & Address::ADDR_MASK] = *src;
+				ip += 3;
+			}
+			DISPATCH_OPCODE;
+			OPCODE(OPCODE_BOX_INT) {
+				GET_VARIANT_PTR(src, 1);
+				_reg_int[_code_ptr[ip + 2] & Address::ADDR_MASK] = *src;
+				ip += 3;
+			}
+			DISPATCH_OPCODE;
+#endif
+
 // Enable for debugging
 #if 0
 			default: {

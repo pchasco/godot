@@ -31,6 +31,10 @@
 #ifndef GDSCRIPT_FUNCTION_H
 #define GDSCRIPT_FUNCTION_H
 
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+#define GDSCRIPT_FUNCTION_REGISTER_COUNT 32
+#endif
+
 #include "core/os/thread.h"
 #include "core/pair.h"
 #include "core/reference.h"
@@ -188,6 +192,31 @@ public:
 		OPCODE_BREAKPOINT,
 		OPCODE_LINE,
 		OPCODE_END
+
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+		,
+		OPCODE_UNBOX_REAL,
+		OPCODE_UNBOX_INT,
+		OPCODE_BOX_REAL,
+		OPCODE_BOX_INT,
+		
+		OPCODE_ASSIGN_REG_REAL,
+		OPCODE_OPERATOR_ADD_INT,
+		OPCODE_OPERATOR_SUB_INT,
+		OPCODE_OPERATOR_MUL_INT,
+		OPCODE_OPERATOR_DIV_INT,
+		OPCODE_OPERATOR_NEG_INT,
+		OPCODE_OPERATOR_POS_INT,
+		OPCODE_OPERATOR_MOD_INT,
+
+		OPCODE_OPERATOR_ADD_REAL,
+		OPCODE_OPERATOR_SUB_REAL,
+		OPCODE_OPERATOR_MUL_REAL,
+		OPCODE_OPERATOR_DIV_REAL,
+		OPCODE_OPERATOR_NEG_REAL,
+		OPCODE_OPERATOR_POS_REAL,
+		OPCODE_OPERATOR_MOD_REAL
+#endif
 	};
 
 	enum Address {
@@ -204,6 +233,12 @@ public:
 		ADDR_TYPE_GLOBAL = 7,
 		ADDR_TYPE_NAMED_GLOBAL = 8,
 		ADDR_TYPE_NIL = 9
+
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+		,
+		ADDR_TYPE_INT_REG = 10,
+		ADDR_TYPE_REAL_REG = 11
+#endif
 	};
 
 	struct StackDebug {
@@ -216,7 +251,9 @@ public:
 
 private:
 	friend class GDScriptCompiler;
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
 	friend class GDScriptFunctionOptimizer; // would be better if there were a public api to change code
+#endif
 
 	StringName source;
 
@@ -252,6 +289,11 @@ private:
 	Vector<int> code;
 	Vector<GDScriptDataType> argument_types;
 	GDScriptDataType return_type;
+
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+	int64_t _reg_int[GDSCRIPT_FUNCTION_REGISTER_COUNT];
+	double _reg_real[GDSCRIPT_FUNCTION_REGISTER_COUNT];
+#endif
 
 #ifdef TOOLS_ENABLED
 	Vector<StringName> arg_names;
@@ -298,6 +340,10 @@ public:
 		int line;
 		int defarg;
 		Variant result;
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
+		int64_t _reg_int[GDSCRIPT_FUNCTION_REGISTER_COUNT];
+		double _reg_real[GDSCRIPT_FUNCTION_REGISTER_COUNT];
+#endif
 	};
 
 	_FORCE_INLINE_ bool is_static() const { return _static; }

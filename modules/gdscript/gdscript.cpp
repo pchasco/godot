@@ -606,29 +606,32 @@ Error GDScript::reload(bool p_keep_state) {
 
 	valid = true;
 
-#define OPTIMIZE_GDSCRIPT
-#ifdef OPTIMIZE_GDSCRIPT
+#ifdef GDSCRIPT_ENABLE_OPTIMIZATION
 	for (Map<StringName, GDScriptFunction *>::Element *E = member_functions.front(); E; E = E->next()) {
 		GDScriptFunctionOptimizer optimizer(E->get());
 		optimizer.begin();
-		optimizer.pass_strip_debug();
 		optimizer.get_cfg()->debug_print_instructions();
+		optimizer.pass_strip_debug();
+		optimizer.pass_local_common_subexpression_elimination();
+		//optimizer.get_cfg()->debug_print_instructions();
 
-		optimizer.get_cfg()->analyze_live_variables();
-		optimizer.get_cfg()->debug_print();
+		//optimizer.pass_register_allocation();
+
+		//optimizer.get_cfg()->analyze_live_variables();
 		//optimizer.get_cfg()->debug_print();
-		optimizer.pass_jump_threading();
 		//optimizer.get_cfg()->debug_print();
-		optimizer.pass_dead_block_elimination();
+		//optimizer.pass_jump_threading();
 		//optimizer.get_cfg()->debug_print();
-		print_line("Function: " + E->get()->get_name());
-		print_line("  Pre-optimized instruction count: " + itos(E->get()->get_code_size()));
+		//optimizer.pass_dead_block_elimination();
+		//optimizer.get_cfg()->debug_print();
+		//print_line("Function: " + E->get()->get_name());
+		//print_line("  Pre-optimized instruction count: " + itos(E->get()->get_code_size()));
 		optimizer.commit();
-		print_line("  Post-optimized instruction count: " + itos(E->get()->get_code_size()));
+		//print_line("  Post-optimized instruction count: " + itos(E->get()->get_code_size()));
 	
 		GDScriptFunctionOptimizer optimizer2(E->get());
-		optimizer.begin();
-		optimizer.get_cfg()->debug_print_instructions();
+		optimizer2.begin();
+		optimizer2.get_cfg()->debug_print_instructions();
 	}
 #endif
 

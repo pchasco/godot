@@ -16,4 +16,4 @@ if env['tools']:
     else:
         # Using a define in the disabled case, to avoid having an extra define
         # in regular builds where all modules are enabled.
-        env_gdscript.Append(CPPDEFINES=['GDSCRIPT_NO_LSP'])
+        env_gdscript.Append(CPPDEFINES=['GDSCRIPT_NO_LSP', 'GDSCRIPT_ENABLE_OPTIMIZATION'])

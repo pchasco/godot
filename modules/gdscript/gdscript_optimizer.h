@@ -85,7 +85,7 @@ public:
 
 	void push_many(int count, const T* p_values) {
 		for (int i = 0; i < count; ++i) {
-			push(*p_values[i]);
+			push(p_values[i]);
 		}
 	}
 
@@ -160,6 +160,25 @@ private:
 	int _top;
 };
 
+
+class OpExpression {
+public:
+	OpExpression() : 
+		opcode(GDScriptFunction::Opcode::OPCODE_END),
+		result_type(Variant::Type::VARIANT_MAX)
+	{}
+
+	GDScriptFunction::Opcode opcode;
+	Variant::Type result_type;
+	int operand_address0;
+	int operand_address1;
+	Variant::Operator variant_operator;
+
+	bool matches(const OpExpression &other) const;
+	bool is_empty() const { return opcode == GDScriptFunction::Opcode::OPCODE_END; }
+	void set_empty() { opcode = GDScriptFunction::Opcode::OPCODE_END; }
+};
+
 #define INSTRUCTION_DEFUSE_TARGET 1
 #define INSTRUCTION_DEFUSE_SOURCE0 2
 #define INSTRUCTION_DEFUSE_SOURCE1 4
@@ -172,6 +191,8 @@ public:
 	Instruction() : omit(false), defuse_mask(0) {}
     bool is_branch() const;
 	String to_string() const;
+
+	OpExpression get_expression() const;
 
 public:
     GDScriptFunction::Opcode opcode;
@@ -223,9 +244,10 @@ public:
 	Block* get_entry_block() const;
 	Block* get_exit_block() const;
 	Block* get_block(int index) const { return _blocks.address_of(index); }
+	int get_block_count() const { return _blocks.size(); }
 	FastVector<int> get_bytecode();
 	void remove_dead_blocks();
-	void analyze_live_variables();
+	void analyze_data_flow();
 
 	void debug_print() const;
 	void debug_print_instructions() const;
@@ -235,8 +257,8 @@ private:
 	void build_blocks();
 	Block* find_block(const FastVector<Block> *blocks, int id) const;
 
-	const GDScriptFunction *function;
-	FastVector<Instruction> instructions;
+	const GDScriptFunction *_function;
+	FastVector<Instruction> _instructions;
     FastVector<Block> _blocks;
     int _entry_id = -10000000;
     int _exit_id = -10000000;
@@ -252,10 +274,18 @@ public:
 	}
 
 	void begin();
+	
+	// Analysis passes
+	void pass_available_expression_analysis();
+	void pass_data_type_analysis();
 
+	// Transform passes
 	void pass_jump_threading();
 	void pass_dead_block_elimination();
+	void pass_local_common_subexpression_elimination();
+	void pass_global_common_subexpression_elimination();
 	void pass_strip_debug();
+	void pass_register_allocation();
 
 	void commit();
 
