@@ -38,7 +38,7 @@
 #include "core/os/os.h"
 #include "core/project_settings.h"
 #include "gdscript_compiler.h"
-#include "gdscript_optimizer.h"
+#include "optimizer/gdscript_optimizer.h"
 
 ///////////////////////////
 

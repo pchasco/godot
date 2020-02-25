@@ -6,6 +6,7 @@ Import('env_modules')
 env_gdscript = env_modules.Clone()
 
 env_gdscript.add_source_files(env.modules_sources, "*.cpp")
+env_gdscript.add_source_files(env.modules_sources, "./optimizer/*.cpp")
 
 if env['tools']:
     env_gdscript.add_source_files(env.modules_sources, "./editor/*.cpp")
