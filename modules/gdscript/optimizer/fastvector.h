@@ -86,6 +86,12 @@ public:
 		}
 	}
 
+	void push_many(const FastVector<T> &vector) {
+		for (int i = 0; i < vector._top; ++i) {
+			push(vector._data[i]);
+		}
+	}
+
 	T pop() {
 		if (_top <= 0) {
 			ERR_FAIL_V_MSG(*((T*)nullptr), "Tried to pop when nothing to pop");

@@ -18,182 +18,6 @@ FastVector<int> get_function_default_argument_jump_table(const GDScriptFunction 
     return result;
 }
 
-OpExpression Instruction::get_expression() const {
-    OpExpression expr;
-
-    switch (opcode) {
-    case GDScriptFunction::Opcode::OPCODE_ASSIGN:
-        expr.opcode = opcode;
-        expr.operand_address0 = source_address0;
-        break;
-    case GDScriptFunction::Opcode::OPCODE_OPERATOR:
-        expr.opcode = opcode;
-        expr.operand_address0 = source_address0;
-        expr.operand_address1 = source_address1;
-        break;
-    default:
-        // leave with default expr;
-        break;
-    }
-
-    return expr;
-}
-
-bool Instruction::is_branch() const {
-    switch (opcode) {
-        case GDScriptFunction::Opcode::OPCODE_JUMP:
-        case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-        case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-        case GDScriptFunction::Opcode::OPCODE_ITERATE:
-        case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-        case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
-            return true;
-        default:
-            return false;
-    }
-}
-
-String Instruction::to_string() const {
-    switch (opcode) {
-        case GDScriptFunction::Opcode::OPCODE_OPERATOR: {
-            String op;
-            switch (variant_op) {
-                case Variant::Operator::OP_ADD:
-                    op = "+";
-                    break;
-                case Variant::Operator::OP_SUBTRACT:
-                    op = "-";
-                    break;
-                case Variant::Operator::OP_MULTIPLY:
-                    op = "*";
-                    break;
-                case Variant::Operator::OP_DIVIDE:
-                    op = "/";
-                    break;
-                case Variant::Operator::OP_MODULE:
-                    op = "%";
-                    break;
-                case Variant::Operator::OP_NOT:
-                    op = "not";
-                    break;
-                case Variant::Operator::OP_NEGATE:
-                    op = "negate";
-                    break;
-                case Variant::Operator::OP_AND:
-                    op = "and";
-                    break;
-                case Variant::Operator::OP_OR:
-                    op = "or";
-                    break;
-                case Variant::Operator::OP_XOR:
-                    op = "xor";
-                    break;
-                case Variant::Operator::OP_IN:
-                    op = "in";
-                    break;
-                case Variant::Operator::OP_LESS:
-                    op = "<";
-                    break;
-                case Variant::Operator::OP_LESS_EQUAL:
-                    op = "<=";
-                    break;
-                case Variant::Operator::OP_GREATER:
-                    op = ">";
-                    break;
-                case Variant::Operator::OP_GREATER_EQUAL:
-                    op = ">=";
-                    break;
-                default:
-                    op = "¯\\_(ツ)_/¯";
-                    break;
-            }
-            
-            return "OPERATOR " + op;
-        }            
-        case GDScriptFunction::Opcode::OPCODE_JUMP:
-            return "JUMP " + itos(branch_ip);
-        case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-            return "JUMP_IF " + itos(branch_ip);
-        case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-            return "JUMP_IF_NOT " + itos(branch_ip);
-        case GDScriptFunction::Opcode::OPCODE_ITERATE:
-            return "ITERATE (ESCAPE " + itos(branch_ip) + ")";
-        case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-            return "ITERATE_BEGIN (ESCAPE " + itos(branch_ip) + ")";
-        case GDScriptFunction::Opcode::OPCODE_LINE:
-            return "LINE";
-        case GDScriptFunction::Opcode::OPCODE_RETURN:
-            return "RETURN";
-        case GDScriptFunction::Opcode::OPCODE_CALL_RETURN: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CALL_RETURN";
-        }
-        case GDScriptFunction::Opcode::OPCODE_CALL_SELF_BASE: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CALL_SELF_BASE " + itos(index_arg) + "(" + args + ")";
-        }
-        case GDScriptFunction::Opcode::OPCODE_CALL_SELF: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CALL_SELF " + itos(index_arg) + "(" + args + ")";
-        }
-        case GDScriptFunction::Opcode::OPCODE_CALL_BUILT_IN: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CALL_BUILT_IN " + itos(index_arg) + "(" + args + ")";
-        }
-        case GDScriptFunction::Opcode::OPCODE_END:
-            return "END";
-        case GDScriptFunction::Opcode::OPCODE_CALL: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CALL " + itos(index_arg) + "(" + args + ")";
-        }
-        case GDScriptFunction::Opcode::OPCODE_ASSIGN:
-            return "ASSIGN";
-        case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "JUMP_TO_DEF_ARGUMENT" + args;
-        }
-        case GDScriptFunction::Opcode::OPCODE_CONSTRUCT_ARRAY: {
-            String args;
-            for (int i = 0; i < varargs.size(); ++i) {
-                args += " " + itos(varargs[i]);
-            }
-            return "CONSTRUCT_ARRAY [" + args + "]";
-        }
-        case GDScriptFunction::Opcode::OPCODE_BOX_INT: {
-            return "BOX INT " + itos(source_address0) + " into " + itos(target_address);
-        }
-        case GDScriptFunction::Opcode::OPCODE_BOX_REAL: {
-            return "BOX REAL " + itos(source_address0) + " into " + itos(target_address);
-        }
-        case GDScriptFunction::Opcode::OPCODE_UNBOX_INT: {
-            return "UNBOX INT " + itos(source_address0) + " into " + itos(target_address);
-        }
-        case GDScriptFunction::Opcode::OPCODE_UNBOX_REAL: {
-            return "UNBOX REAL " + itos(source_address0) + " into " + itos(target_address);
-        }
-        default:
-            return "Unknown instruction " + itos((int)opcode); 
-    }
-}
-
 void Block::replace_jumps(Block& original_block, Block& target_block) {
     for (int i = 0; i < instructions.size(); ++i) {
         Instruction& inst = instructions[i];
@@ -210,8 +34,11 @@ void Block::replace_jumps(Block& original_block, Block& target_block) {
         }
     }
 
-    forward_edges.erase(original_block.id);
-    forward_edges.insert(target_block.id);
+    for (int i = 0; i < forward_edges.size(); ++i) {
+        if (forward_edges[0] == original_block.id) {
+            forward_edges[1] = target_block.id;
+        }
+    }
     target_block.back_edges.insert(id);
     original_block.back_edges.erase(id);
 }
@@ -259,104 +86,40 @@ void Block::update_def_use() {
     }
 }
 
-bool OpExpression::matches(const OpExpression &other) const {
-    if (opcode != other.opcode) {
-        return false;
-    }
-    if (result_type != other.result_type) {
-        return false;
+int Block::calculate_bytecode_size(bool include_jump) {
+    int size = 0;
+    for (int i = 0; i < instructions.size(); ++i) {
+        size += instructions[i].stride;
     }
 
-    if (opcode == GDScriptFunction::Opcode::OPCODE_ASSIGN) {
-        return operand_address0 == other.operand_address0;
-    }
-
-    if (opcode == GDScriptFunction::Opcode::OPCODE_OPERATOR) {			
-        if (variant_operator != other.variant_operator) {
-            // Expressions are not same if operator is different
-            return false;
+    switch (block_type) {
+    case Block::Type::NORMAL:
+        if (include_jump) {
+            size += 2;
         }
-
-        // Check expression type. We do not consider expressions
-        // with different types for CSE
-        switch (result_type) {
-        case Variant::Type::INT:
-        case Variant::Type::REAL:
-        case Variant::Type::BOOL:
-            // Any of these types are supported
-            break;
-        default:
-            return false;
+        break;
+    case Block::Type::BRANCH_IF:
+        size += (include_jump ? 5 : 3);
+        break;
+    case Block::Type::DEFARG_ASSIGNMENT:
+        size += forward_edges.size();
+        if (include_jump) {
+            size += 2;
         }
-
-        // Sort operands when possible to potentially match more
-        // expressions
-
-        bool is_unary = false;
-        int this_address1 = 0;
-        int this_address2 = 0;
-        int other_address1 = 0;
-        int other_address2 = 0;
-
-        switch (variant_operator) {
-        // Unary ops
-        case Variant::Operator::OP_NEGATE:
-            is_unary = true;
-            this_address1 = operand_address0;
-            other_address1 = other.operand_address0;
-            break;
-
-        // Non-commutative operators. a-b != b-a, etc
-        // Preserve operand order for comparison
-        case Variant::Operator::OP_SUBTRACT:
-        case Variant::Operator::OP_DIVIDE:
-        case Variant::Operator::OP_MODULE:
-            this_address1 = operand_address0;
-            this_address2 = operand_address1;
-            other_address1 = other.operand_address0;
-            other_address2 = other.operand_address1;
-            break;
-
-        // Commutative operators. a+b == b+a.
-        // Sort operands by address asc
-        case Variant::Operator::OP_ADD:
-        case Variant::Operator::OP_MULTIPLY:
-        case Variant::Operator::OP_AND:
-        case Variant::Operator::OP_OR:
-        case Variant::Operator::OP_XOR:
-        case Variant::Operator::OP_BIT_AND:
-        case Variant::Operator::OP_BIT_OR:
-        case Variant::Operator::OP_BIT_XOR:
-            if (operand_address1 < operand_address0) {
-                this_address1 = operand_address1;
-                this_address2 = operand_address0;
-            } else {
-                this_address1 = operand_address0;
-                this_address2 = operand_address1;
-            }
-
-            if (other.operand_address1 < other.operand_address0) {
-                other_address1 = other.operand_address1;
-                other_address2 = other.operand_address0;
-            } else {
-                other_address1 = other.operand_address0;
-                other_address2 = other.operand_address1;
-            }
-
-        default:
-            return false;
-        }			
-
-        // If all else has matched, then compare operands.
-        // If operands match then these expressions are the same.
-
-        return this_address1 == other_address1
-            && (is_unary || this_address2 == other_address2);
+        break;
+    case Block::Type::ITERATE:
+        // todo
+        break;
+    case Block::Type::ITERATE_BEGIN:
+        // todo
+        break;
+    case Block::Type::TERMINATOR:
+        size += 1;
+        break;
     }
 
-    return false;
+    return size;
 }
-
 
 ControlFlowGraph::ControlFlowGraph(const GDScriptFunction *function) {
     _function = function;
@@ -374,341 +137,8 @@ void ControlFlowGraph::disassemble() {
     const int *code = _function->get_code();
     int code_size = _function->get_code_size();
     while (ip < code_size) {
-        GDScriptFunction::Opcode opcode = (GDScriptFunction::Opcode)code[ip];
-        Instruction inst;
-        inst.opcode = opcode;
-        int inst_start_ip = ip;
-
-        switch (opcode) {
-            case GDScriptFunction::Opcode::OPCODE_OPERATOR:
-                inst.variant_op = (Variant::Operator)code[ip + 1];
-                inst.source_address0 = code[ip + 2];
-                inst.source_address1 = code[ip + 3];
-                inst.target_address = code[ip + 4];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                    | INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1;
-                ip += 5;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_EXTENDS_TEST:
-                inst.source_address0 = code[ip + 1]; // instance
-                inst.source_address1 = code[ip + 2]; // type
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                    | INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_IS_BUILTIN:
-                inst.source_address0 = code[ip + 1];
-                inst.target_address = code[ip + 3];
-                inst.type_arg = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                    | INSTRUCTION_DEFUSE_SOURCE0;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_SET:
-                inst.target_address = code[ip + 1];
-                inst.index_address = code[ip + 2]; // index
-                inst.source_address0 = code[ip + 3]; // value
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_INDEX
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_GET:
-                inst.source_address0 = code[ip + 1]; // value
-                inst.index_address = code[ip + 2]; // index
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_INDEX
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_SET_NAMED:
-                inst.source_address0 = code[ip + 1]; // value
-                inst.index_arg = code[ip + 2]; // name index
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_GET_NAMED:
-                inst.target_address = code[ip + 1];
-                inst.source_address0 = code[ip + 3]; // value
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_SET_MEMBER:
-                inst.index_arg = code[ip + 1]; // name index
-                inst.source_address0 = code[ip + 2]; // value
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SELF;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_GET_MEMBER:
-                inst.index_arg = code[ip + 1]; // name index
-                inst.target_address = code[ip + 2]; // value
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                    | INSTRUCTION_DEFUSE_SELF;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN:
-                inst.target_address = code[ip + 1];
-                inst.source_address0 = code[ip + 2]; 
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN_TRUE:
-                inst.target_address = code[ip + 1];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET;
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN_FALSE:
-                inst.target_address = code[ip + 1];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET;
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_BUILTIN:
-                inst.type_arg = code[ip + 1];
-                inst.target_address = code[ip + 2];
-                inst.source_address0 = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_NATIVE:
-                inst.source_address0 = code[ip + 1]; // type
-                inst.target_address = code[ip + 2];
-                inst.source_address1 = code[ip + 3]; // source
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_SCRIPT:
-                inst.source_address0 = code[ip + 1]; // type
-                inst.target_address = code[ip + 2];
-                inst.source_address1 = code[ip + 3]; // source
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CAST_TO_BUILTIN:
-                inst.type_arg = code[ip + 1]; // variant::type
-                inst.source_address0 = code[ip + 2]; // source
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CAST_TO_NATIVE:
-                inst.source_address0 = code[ip + 1]; // to type
-                inst.source_address1 = code[ip + 2]; // source
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CAST_TO_SCRIPT:
-                inst.source_address0 = code[ip + 1]; // to type
-                inst.source_address1 = code[ip + 2]; // source
-                inst.target_address = code[ip + 3];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CONSTRUCT:
-                inst.type_arg = code[ip + 1];
-                inst.vararg_count = code[ip + 2];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 3 + i]);
-                }
-                inst.target_address = code[ip + 3 + inst.vararg_count];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CONSTRUCT_ARRAY:
-                inst.vararg_count = code[ip + 1];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 2 + i]);
-                }
-                inst.target_address = code[ip + 2 + inst.vararg_count];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CONSTRUCT_DICTIONARY:
-                inst.vararg_count = code[ip + 1];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 2 + i]);
-                }
-                inst.target_address = code[ip + 2 + (inst.vararg_count * 2)];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CALL:
-            case GDScriptFunction::Opcode::OPCODE_CALL_RETURN:
-                inst.vararg_count = code[ip + 1];
-                inst.source_address0 = code[ip + 2];
-                inst.index_arg = code[ip + 3];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 4 + i]);
-                }
-                // If this is CALL then whatever value is here will be ignored in execution
-                // If this is CALL_RETURN then it will be the location to store result
-                inst.target_address = code[ip + 4 + inst.vararg_count];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_SOURCE0;
-                if (inst.opcode == GDScriptFunction::Opcode::OPCODE_CALL_RETURN) {
-                    inst.defuse_mask |= INSTRUCTION_DEFUSE_TARGET;
-                }
-                ip += 5 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CALL_BUILT_IN:
-                inst.index_arg = code[ip + 1]; // function index
-                inst.vararg_count = code[ip + 2];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 3 + i]);
-                }
-                inst.target_address = code[ip + 3 + inst.vararg_count];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 4 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CALL_SELF:
-                // ?
-                ip += 1;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_CALL_SELF_BASE:
-                inst.index_arg = code[ip + 1];
-                inst.vararg_count = code[ip + 2];
-                for (int i = 0; i < inst.vararg_count; ++i) {
-                    inst.varargs.push(code[ip + 3 + i]);
-                }
-                inst.target_address = code[ip + 3 + inst.vararg_count + 1];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_VARARGS
-                    | INSTRUCTION_DEFUSE_TARGET
-                    | INSTRUCTION_DEFUSE_SELF;
-                ip += 4 + inst.vararg_count;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_YIELD:
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_YIELD_SIGNAL:
-                inst.source_address0 = code[ip + 1];
-                inst.index_arg = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_YIELD_RESUME:
-                inst.target_address = code[ip + 1];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_TARGET;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_JUMP:
-                inst.branch_ip = code[ip + 1];
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-                inst.source_address0 = code[ip + 1];
-                inst.branch_ip = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-                inst.source_address0 = code[ip + 1];
-                inst.branch_ip = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
-                ip += 1;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-                inst.source_address0 = code[ip + 1]; // counter
-                inst.source_address1 = code[ip + 2]; // container
-                inst.branch_ip = code[ip + 3];
-                inst.target_address = code[ip + 4]; // iterator
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 5;
-                break; 
-            case GDScriptFunction::Opcode::OPCODE_ITERATE:
-                inst.source_address0 = code[ip + 1]; // counter
-                inst.source_address1 = code[ip + 2]; // container
-                inst.branch_ip = code[ip + 3];
-                inst.target_address = code[ip + 4]; // iterator
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 5;
-                break;          
-            case GDScriptFunction::Opcode::OPCODE_ASSERT:
-                inst.source_address0 = code[ip + 1]; // test
-                inst.source_address1 = code[ip + 2]; // message
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0
-                    | INSTRUCTION_DEFUSE_SOURCE1;
-                ip += 3;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_BREAKPOINT:
-                ip += 1;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_LINE:
-                inst.index_arg = code[ip + 1];
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_END:
-                ip += 1;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_RETURN:
-                inst.source_address0 = code[ip + 1];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
-                ip += 2;
-                break;
-            case GDScriptFunction::Opcode::OPCODE_BOX_INT:
-                inst.source_address0 = code[ip + 1];
-                inst.target_address = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0 
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3;        
-                break;
-            case GDScriptFunction::Opcode::OPCODE_BOX_REAL:
-                inst.source_address0 = code[ip + 1];
-                inst.target_address = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0 
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3;        
-                break;
-            case GDScriptFunction::Opcode::OPCODE_UNBOX_INT:
-                inst.source_address0 = code[ip + 1];
-                inst.target_address = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0 
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3;        
-                break;
-            case GDScriptFunction::Opcode::OPCODE_UNBOX_REAL:
-                inst.source_address0 = code[ip + 1];
-                inst.target_address = code[ip + 2];
-                inst.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0 
-                    | INSTRUCTION_DEFUSE_TARGET;
-                ip += 3;        
-                break;
-            
-            default:
-                ERR_FAIL_MSG("Invalid opcode");
-                ip = 999999999;
-                break;
-        }
-
-        inst.stride = ip - inst_start_ip;
+        Instruction inst = Instruction::parse(code, ip, code_size);
+        ip += inst.stride;
         _instructions.push(inst);
     }
 }
@@ -724,26 +154,24 @@ void ControlFlowGraph::build_blocks() {
     
     Block entry;
     entry.id = ENTRY_BLOCK_ID;
-    entry.forward_edges.insert(0);
-    {
-        Instruction jump;
-        jump.opcode = GDScriptFunction::Opcode::OPCODE_JUMP;
-        jump.branch_ip = 0;
-        jump.stride = 2;
-        entry.instructions.push(jump);
-    }
+    entry.block_type = Block::Type::NORMAL;
+    // Entry block always jumps to block with id 0
+    entry.forward_edges.push(0);
+
     _entry_id = entry.id;
 
     Block exit;
+    exit.block_type = Block::Type::TERMINATOR;
     exit.id = EXIT_BLOCK_ID;
     _exit_id = exit.id;
 
     blocks.clear();
-    blocks.push(entry);
     blocks.push(exit);
-
+    blocks.push(entry);
     worklist.push(0);
 
+    // Precache the list of jump target addresses. We can use this
+    // to know whether or not a block is a jump target
     for (int i = 0; i < _instructions.size(); ++i) {
         Instruction& inst = _instructions[i];
 
@@ -806,76 +234,84 @@ void ControlFlowGraph::build_blocks() {
             Instruction& inst = _instructions[i];
             i += 1;
 
-            block.instructions.push(inst);
-            ip += inst.stride;
+            int next_ip = ip + inst.stride;
 
+            // Insert instruction to block
             switch (inst.opcode) {
+                // Branch instructions are handled as a special case.
+                // We do not insert branch instructions into the block.
+                // Branches will be emitted based on the block type. This
+                // Simplifies optimizations that insert or remove instructions
+                // because they will not need to worry about preserving the
+                // order of the terminating jump
                 case GDScriptFunction::Opcode::OPCODE_JUMP:
                     worklist.push(inst.branch_ip);
-                    block.forward_edges.insert(inst.branch_ip);
+                    block.block_type = Block::Type::NORMAL;
+                    block.forward_edges.push(inst.branch_ip);
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-                case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-                case GDScriptFunction::Opcode::OPCODE_ITERATE:
-                case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-                    worklist.push(ip);
                     worklist.push(inst.branch_ip);
-                    block.forward_edges.insert(ip);
-                    block.forward_edges.insert(inst.branch_ip);
+                    worklist.push(next_ip);
+                    block.block_type = Block::Type::BRANCH_IF;
+                    block.forward_edges.push(inst.branch_ip);
+                    block.forward_edges.push(next_ip);
+                    block.jump_condition_address = inst.source_address0;
+                    done = true;
+                    break;
+                case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
+                    worklist.push(inst.branch_ip);
+                    worklist.push(next_ip);
+                    block.block_type = Block::Type::BRANCH_IF;
+                    // JUMP_IF_NOT is implemented with BRANCH_IF by swapping the target addresses
+                    block.forward_edges.push(next_ip);
+                    block.forward_edges.push(inst.branch_ip);
+                    block.jump_condition_address = inst.source_address0;
+                    done = true;
+                    break;
+                case GDScriptFunction::Opcode::OPCODE_ITERATE:
+                    worklist.push(next_ip);
+                    worklist.push(inst.branch_ip);
+                    block.block_type = Block::Type::ITERATE;
+                    block.forward_edges.push(inst.branch_ip);
+                    block.forward_edges.push(next_ip);
+                    block.jump_condition_address = inst.source_address0;
+                    done = true;
+                    break;
+                case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
+                    worklist.push(next_ip);
+                    worklist.push(inst.branch_ip);
+                    block.block_type = Block::Type::ITERATE_BEGIN;
+                    block.forward_edges.push(inst.branch_ip);
+                    block.forward_edges.push(next_ip);
+                    block.jump_condition_address = inst.source_address0;
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_RETURN:
                 case GDScriptFunction::Opcode::OPCODE_END:
-                    block.forward_edges.insert(exit.id);
+                    block.forward_edges.push(exit.id);
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
                     // Can't use defarg_jump_table because we popped one out. Refer back to function
                     for (int defarg = 0; defarg < _function->get_default_argument_count(); ++defarg) {
                         int defarg_ip = _function->get_default_argument_addr(defarg);
-                        block.forward_edges.insert(defarg_ip);
+                        block.forward_edges.push(defarg_ip);
                         worklist.push(defarg_ip);
                     }
-                    block.forward_edges.insert(ip);
-                    worklist.push(ip);
+                    block.block_type = Block::Type::DEFARG_ASSIGNMENT;
+                    block.forward_edges.push(next_ip);
+                    worklist.push(next_ip);
                     done = true;
                     break;
+
                 default:
-                    if (jump_targets.has(ip)) {
-                        block.forward_edges.insert(ip);
-                        done = true;
-                    }
+                    // Any other instruction gets pushed to the block instructions
+                    block.instructions.push(inst);
                     break;
             } 
 
-            if (done) {
-                // Insert jump instruction to next block. Unneeded/unreachable
-                // jump instructions will be removed later during
-                // optimizations. Also don't alter default argument blocks
-                int branch_ip;
-                switch (inst.opcode) {
-                    case GDScriptFunction::Opcode::OPCODE_END:
-                    case GDScriptFunction::Opcode::OPCODE_RETURN:
-                        branch_ip = _exit_id;
-                        break;
-                    default:
-                        branch_ip = ip;
-                        break;
-                }
-                if (block.forward_edges.has(branch_ip)
-                    && !defarg_jump_table.has(branch_ip)) {
-                    Instruction jump; 
-                    jump.opcode = GDScriptFunction::Opcode::OPCODE_JUMP;
-                    jump.branch_ip = branch_ip;
-                    jump.stride = 2;
-                    block.instructions.push(jump);
-                }
-
-                if (defarg_jump_table.has(block_start_ip)) {
-                    block.force_code_size = ip - block_start_ip;
-                }
-            }
+            ip = next_ip;
         }   
 
         blocks.push(block);
@@ -883,8 +319,8 @@ void ControlFlowGraph::build_blocks() {
     
     // Create back edges
     for (int bi = 0; bi < blocks.size(); ++bi) {
-        for (Set<int>::Element *E = blocks[bi].forward_edges.front(); E; E = E->next()) {
-            Block *succ = find_block(&blocks, E->get());
+        for (int i = 0; i < blocks[bi].forward_edges.size(); ++i) {
+            Block *succ = find_block(&blocks, blocks[bi].forward_edges[i]);
             succ->back_edges.insert(blocks[bi].id);
         }
     }
@@ -926,8 +362,10 @@ void ControlFlowGraph::remove_dead_blocks() {
     // Remove this block from back edges of any blocks
     for (int i = 0; i < blocks_to_remove.size(); ++i) {
         Block *block = blocks_to_remove[i];
-        Block *target = find_block(block->forward_edges.front()->get());
-        target->back_edges.erase(block->id);
+        for (int j = 0; j < block->forward_edges.size(); ++j) {
+            Block *target = find_block(block->forward_edges[j]);
+            target->back_edges.erase(block->id);
+        }
     }
 
     // Replace _blocks with new list of blocks.
@@ -972,8 +410,8 @@ void ControlFlowGraph::analyze_data_flow() {
             Block *block = find_block(block_id);
 
             // Insert all ins from successive blocks into this block's outs
-            for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-                Block *succ = find_block(E->get());
+            for (int i = 0; i < block->forward_edges.size(); ++i) {
+                Block *succ = find_block(block->forward_edges[i]);
                 for (Set<int>::Element *A = succ->ins.front(); A; A = A->next()) {
                     if (!block->outs.has(A->get())) {
                         block->outs.insert(A->get());
@@ -992,6 +430,17 @@ void ControlFlowGraph::analyze_data_flow() {
                     }
                 }
             }     
+
+            // Update this block's ins with the jump condition address, if applicable
+            switch (block->block_type) {
+                case Block::Type::BRANCH_IF:
+                case Block::Type::ITERATE:
+                case Block::Type::ITERATE_BEGIN:
+                    if (!block->defs.has(block->jump_condition_address)) {
+                        block->ins.insert(block->jump_condition_address);
+                        repeat = true;
+                    }
+            }
 
             for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
                 worklist.push(E->get());
@@ -1045,42 +494,24 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
         }
 
         blocks_in_order.push(block_id);
-
-        for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-            worklist.push(E->get());
-        }
+        worklist.push_many(block->forward_edges.size(), block->forward_edges.ptr());
     }
 
     // Now build an index of the blocks and their starting offset in the bytecode
     for (int block_index = 0; block_index < blocks_in_order.size(); ++block_index) {
+        // Remember the beginning ip offset of this block
         int block_id = blocks_in_order[block_index];
-        Block *block = find_block(block_id);
         block_ip_index[block_id] = ip;
-        int start_block_ip = ip;
 
-        for (int i = 0; i < block->instructions.size(); ++i) {
-            Instruction& inst = block->instructions[i];
-            
-            if (inst.opcode == GDScriptFunction::Opcode::OPCODE_JUMP
-                && block_index < blocks_in_order.size() - 1
-                && blocks_in_order[block_index + 1] == inst.branch_ip) {
-
-                // As an optimization, if this block ends in an unconditional
-                // jump, AND the target of that jump is the next block to be
-                // written to bytecode, then we can omit it.
-                // Also no need to check the defarg jump table because those
-                // blocks will not end in a branch (unless it's the last one,
-                // then it's OK to change its size)
-                
-                inst.omit = true;
-            } else {
-                inst.omit = false;
-                ip += inst.stride;
-            }            
-        }
-
-        while (ip < block->force_code_size + start_block_ip) {
-            ip += 1;
+        // Move ip offset forward by block size. Include the final jump instruction
+        // of the block only if the next block is not guaranteed next in bytecode
+        Block *block = find_block(block_id);
+        if (block->block_type == Block::Type::NORMAL
+        && block_index < blocks_in_order.size() - 1
+        && blocks_in_order[block_index + 1] == block->forward_edges[0]) {
+            ip += block->calculate_bytecode_size(false);
+        } else {
+            ip += block->calculate_bytecode_size(true);
         }
     }
 
@@ -1089,14 +520,21 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
 
     for (int block_index = 0; block_index < blocks_in_order.size(); ++block_index) {
         int block_id = blocks_in_order[block_index];
-
         Block *block = find_block(block_id);
         if (block == nullptr) {
             break;
         }
+        
+        // As a convenience, get the id of the next block in the list of blocks
+        int next_block_id = -2;
+        if (block_index < blocks_in_order.size() - 1) {
+            next_block_id = blocks_in_order[block_index + 1];
+        }
 
+        // This block starts at the end of the bytecode we've already emitted
         int start_block_ip = bytecode.size();
 
+        // Emit instructions
         for (int i = 0; i < block->instructions.size(); ++i) {
             Instruction& inst = block->instructions[i];
             if (inst.omit) {
@@ -1255,31 +693,6 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
                 case GDScriptFunction::Opcode::OPCODE_YIELD_RESUME:
                     bytecode.push(inst.target_address);
                     break;
-                case GDScriptFunction::Opcode::OPCODE_JUMP:
-                    bytecode.push(block_ip_index[inst.branch_ip]);
-                    break;
-                case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-                    bytecode.push(inst.source_address0);
-                    bytecode.push(block_ip_index[inst.branch_ip]);
-                    break;
-                case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-                    bytecode.push(inst.source_address0);
-                    bytecode.push(block_ip_index[inst.branch_ip]);
-                    break;
-                case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
-                    break;
-                case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-                    bytecode.push(inst.source_address0); // counter
-                    bytecode.push(inst.source_address1); // container
-                    bytecode.push(block_ip_index[inst.branch_ip]);
-                    bytecode.push(inst.target_address); // iterator
-                    break; 
-                case GDScriptFunction::Opcode::OPCODE_ITERATE:
-                    bytecode.push(inst.source_address0); // counter
-                    bytecode.push(inst.source_address1); // container
-                    bytecode.push(block_ip_index[inst.branch_ip]);
-                    bytecode.push(inst.target_address); // iterator
-                    break;          
                 case GDScriptFunction::Opcode::OPCODE_ASSERT:
                     bytecode.push(inst.source_address0); // test
                     bytecode.push(inst.source_address1); // message
@@ -1307,9 +720,47 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
             }
         }
 
-        // Pad out block with noops. These should not be executed
-        while (bytecode.size() - start_block_ip < block->force_code_size) {
-            bytecode.push(GDScriptFunction::Opcode::OPCODE_BREAKPOINT);
+        // Emit jump to next block IF necessary
+        int unconditional_jump_block_id = -2;
+        switch (block->block_type) {
+            case Block::Type::NORMAL:
+                // Dont emit the unconditional jump just yet...
+                unconditional_jump_block_id = block->forward_edges[0];
+                break;
+            case Block::Type::BRANCH_IF:
+                // Do emit conditional jumps here
+                bytecode.push(GDScriptFunction::Opcode::OPCODE_JUMP_IF);
+                bytecode.push(block->jump_condition_address);
+                bytecode.push(block_ip_index[block->forward_edges[0]]);
+                unconditional_jump_block_id = block->forward_edges[1];
+                break;
+            case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
+                break;
+            case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
+                //bytecode.push(GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN);
+                //bytecode.push(inst.source_address0); // counter
+                //bytecode.push(inst.source_address1); // container
+                //bytecode.push(block_ip_index[inst.branch_ip]);
+                //bytecode.push(inst.target_address); // iterator
+                break; 
+            case GDScriptFunction::Opcode::OPCODE_ITERATE:
+                //bytecode.push(GDScriptFunction::Opcode::OPCODE_ITERATE);
+                //bytecode.push(inst.source_address0); // counter
+                //bytecode.push(inst.source_address1); // container
+                //bytecode.push(block_ip_index[inst.branch_ip]);
+                //bytecode.push(inst.target_address); // iterator
+                break;          
+            case Block::Type::TERMINATOR:
+                bytecode.push(GDScriptFunction::Opcode::OPCODE_END);
+                break;
+        }
+
+        // Emit a jump if the next block is not the next in bytecode
+        if (unconditional_jump_block_id >= 0) {
+            if (next_block_id != unconditional_jump_block_id) {
+                bytecode.push(GDScriptFunction::Opcode::OPCODE_JUMP);
+                bytecode.push(block_ip_index[unconditional_jump_block_id]);
+            }
         }
     }
 
@@ -1373,8 +824,8 @@ void ControlFlowGraph::debug_print() const {
         if (block->forward_edges.empty()) {
             print_line("    none");
         } else {
-            for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-                print_line("    " + itos(E->get()));
+            for (int i = 0; i < block->forward_edges.size(); ++i) {
+                print_line("    " + itos(block->forward_edges[i]));
             }
         }
 

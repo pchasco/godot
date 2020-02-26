@@ -5,66 +5,19 @@
 #include "modules/gdscript/gdscript_function.h"
 
 #include "fastvector.h"
+#include "instruction.h"
+#include "opexpression.h"
 
 FastVector<int> get_function_default_argument_jump_table(const GDScriptFunction *function);
-
-class OpExpression {
-public:
-	OpExpression() : 
-		opcode(GDScriptFunction::Opcode::OPCODE_END),
-		result_type(Variant::Type::VARIANT_MAX)
-	{}
-
-	GDScriptFunction::Opcode opcode;
-	Variant::Type result_type;
-	int operand_address0;
-	int operand_address1;
-	Variant::Operator variant_operator;
-
-	bool matches(const OpExpression &other) const;
-	bool is_empty() const { return opcode == GDScriptFunction::Opcode::OPCODE_END; }
-	void set_empty() { opcode = GDScriptFunction::Opcode::OPCODE_END; }
-};
-
-#define INSTRUCTION_DEFUSE_TARGET 1
-#define INSTRUCTION_DEFUSE_SOURCE0 2
-#define INSTRUCTION_DEFUSE_SOURCE1 4
-#define INSTRUCTION_DEFUSE_VARARGS 8
-#define INSTRUCTION_DEFUSE_INDEX 16
-#define INSTRUCTION_DEFUSE_SELF 32
-
-class Instruction {
-public:
-	Instruction() : omit(false), defuse_mask(0) {}
-    bool is_branch() const;
-	String to_string() const;
-
-	OpExpression get_expression() const;
-
-public:
-    GDScriptFunction::Opcode opcode;
-    Variant::Operator variant_op;
-    int target_address;
-    int source_address0;
-	union {
-		int source_address1;
-		int index_address;
-	};
-    int index_arg;
-    int type_arg;
-    int vararg_count;
-    int branch_ip;
-    int stride;
-	bool omit;
-	int defuse_mask;
-    FastVector<int> varargs;
-};
 
 class Block {
 public:
 	enum Type {
 		NORMAL,
-		BRANCH,
+		BRANCH_IF,
+		ITERATE_BEGIN,
+		ITERATE,
+		DEFARG_ASSIGNMENT,
 		TERMINATOR,
 	};
 
@@ -86,10 +39,11 @@ public:
 	Set<int> ins;
 	Set<int> outs;
 	Set<int> back_edges;
-	Set<int> forward_edges;
+	FastVector<int> forward_edges;
 
 	void replace_jumps(Block& original_block, Block& target_block);
 	void update_def_use();
+	int calculate_bytecode_size(bool include_jump = true);
 };
 
 class ControlFlowGraph {

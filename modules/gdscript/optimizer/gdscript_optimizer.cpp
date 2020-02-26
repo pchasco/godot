@@ -89,9 +89,7 @@ void GDScriptFunctionOptimizer::pass_strip_debug() {
         block->instructions.clear();
         block->instructions.push_many(keep_instructions.size(), keep_instructions.ptr());
 
-        for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-            worklist.push(E->get());
-        }
+        worklist.push_many(block->forward_edges);
     }
 }
 
@@ -157,15 +155,13 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
             blocks_to_remove.push(block->id);
         }
 
-        for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-            worklist.push(E->get());
-        }
+        worklist.push_many(block->forward_edges);
     }
 
     for (int i = 0; i < blocks_to_remove.size(); ++i) {
         Block *block = _cfg->find_block(blocks_to_remove[i]);
         // We know there is only one succ block
-        Block *succ = _cfg->find_block(block->forward_edges.front()->get());
+        Block *succ = _cfg->find_block(block->forward_edges[0]);
 
         // For all blocks jumping to this block, just jump to succ block instead
         for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
@@ -240,120 +236,19 @@ public:
     OpExpression expression;
     int destination;
     bool removed;
+
+    bool uses_any(int target_address, int address0, int address1) {
+        if (target_address == destination) {
+            return true;
+        }
+
+        return expression.uses(address0)
+            || expression.uses(address1);
+    }
 };
 
 void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
-    FastVector<int> worklist;
-    FastVector<int> visited;
-    FastVector<int> bytecode;
-    FastVector<int> blocks_in_order;
-    Map<int, int> block_ip_index;
-    Map<int, int> swaps;
-    FastVector<Instruction> keep;
-    FastVector<AvailableExpression> available_expressions;
 
-    // Keep a list of the default argument assignment blocks to refer back to later. We use this
-    // to avoid modifying them
-    FastVector<int> defarg_jump_table = get_function_default_argument_jump_table(_function);
-    // Though we can allow the last defarg assignment block be modified
-    if (!defarg_jump_table.empty()) {
-        defarg_jump_table.pop();
-    }
-
-    worklist.push(_cfg->get_entry_block()->id);
-    
-    while (!worklist.empty()) {
-        int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
-
-        visited.push(block_id);
-
-        Block *block = _cfg->find_block(block_id);
-        if (block == nullptr) {
-            break;
-        }
-        
-        for (int i = 0; i < block->instructions.size(); ++i) {
-            Instruction inst = block->instructions[i];
-
-            if (swaps.has(inst.source_address0)) {
-                inst.source_address0 = swaps[inst.source_address0];
-            }
-            if (swaps.has(inst.source_address1)) {
-                inst.source_address1 = swaps[inst.source_address1];
-            }
-
-            OpExpression expr = inst.get_expression();
-
-            // If this is not an assignment or supported expression then move
-            // to the next instruction
-            if (expr.is_empty()) {
-                keep.push(inst);
-                continue;
-            }
-
-            // Check to see if this expression is available already
-            int available_expression_index = -1;
-            for (int j = 0; j < available_expressions.size(); ++j) {
-                if (!available_expressions[j].removed && available_expressions[j].expression.matches(expr)) {
-                    available_expression_index = j;
-                    break;
-                }
-            }
-
-            if (available_expression_index >= 0) {
-                // It's available, so just use the available result.
-                swaps[inst.target_address] = available_expressions[available_expression_index].destination;
-            } else {
-                // Not available, so keep this instruction 
-                keep.push(inst);
-
-                // We are redefining target with a new value so it can no longer
-                // be used as a swap
-                swaps.erase(inst.target_address);
-
-                // "remove" the available expression.. Actually just set it empty
-                // so that it will no longer be used.
-                for (int j = 0; j < available_expressions.size(); ++j) {
-                    AvailableExpression &ae = available_expressions[j];
-                    if (!ae.removed && ae.destination == inst.target_address) {
-                        ae.expression.set_empty();
-                        ae.removed = true;
-                    }
-                }
-
-                // Now we have a new expression available in this location
-                AvailableExpression new_ae;
-                new_ae.destination = inst.target_address;
-                new_ae.expression = expr;
-                new_ae.removed = false;
-                available_expressions.push(new_ae);
-            }
-        }
-
-        // Need to store values from elided expressions to keep out data flow
-        // invariant.
-        for (Map<int, int>::Element *E = swaps.front(); E; E = E->next()) {
-            if (block->outs.has(E->key())) {
-                Instruction new_inst;
-                new_inst.opcode = GDScriptFunction::Opcode::OPCODE_ASSIGN;
-                new_inst.target_address = E->key();
-                new_inst.source_address0 = E->value();
-                keep.push(new_inst);
-            }
-        }
-
-        // Replace block instructions
-        block->instructions.clear();
-        block->instructions.push_many(keep.size(), keep.ptr());
-
-        // Push succ blocks
-        for (Set<int>::Element *E = block->forward_edges.front(); E; E = E->next()) {
-            worklist.push(E->get());
-        }
-    }
 }
 
 void GDScriptFunctionOptimizer::pass_global_common_subexpression_elimination() {
