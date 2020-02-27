@@ -17,6 +17,7 @@ public:
 	Instruction() : omit(false), defuse_mask(0) {}
     bool is_branch() const;
 	String to_string() const;
+    void sort_operands();
 
 public:
     GDScriptFunction::Opcode opcode;

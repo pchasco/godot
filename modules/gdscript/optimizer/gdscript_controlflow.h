@@ -14,14 +14,14 @@ class Block {
 public:
 	enum Type {
 		NORMAL,
-		BRANCH_IF,
+		BRANCH_IF_NOT,
 		ITERATE_BEGIN,
 		ITERATE,
 		DEFARG_ASSIGNMENT,
 		TERMINATOR,
 	};
 
-	Block() : force_code_size(0) {}
+	Block() : force_code_size(0), block_type(Type::NORMAL) {}
 
 	// During immediate construction of the CFG the id corresponds with
 	// the offset of the first instruction in the block of the bytecode.

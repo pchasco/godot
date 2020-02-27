@@ -234,24 +234,157 @@ public:
     AvailableExpression() : removed(false) {}
 
     OpExpression expression;
-    int destination;
+    int target_address;
     bool removed;
 
-    bool uses_any(int target_address, int address0, int address1) {
-        if (target_address == destination) {
-            return true;
-        }
-
+    bool uses_any(int address0, int address1) {
         return expression.uses(address0)
             || expression.uses(address1);
     }
 };
 
-void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
+void GDScriptFunctionOptimizer::pass_available_expression_analysis() {
 
 }
 
+AvailableExpression* find_available_expression(const FastVector<AvailableExpression>& availables, const OpExpression& expression) {
+    for (int i = 0; i < availables.size(); ++i) {
+        AvailableExpression& current = availables[i];
+        if (!current.removed) {
+            if (current.expression == expression) {
+                return availables.address_of(i);
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
+    _cfg->analyze_data_flow();
+
+    Block *entry_block = _cfg->get_entry_block();
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
+
+    Block *exit_block = _cfg->get_exit_block();
+    FastVector<int> worklist;
+    FastVector<int> visited;
+
+    worklist.push(entry_block->id);
+
+    while(!worklist.empty()) {
+        int block_id = worklist.pop();
+        if (visited.has(block_id)) {
+            continue;
+        }
+
+        visited.push(block_id);
+
+        Block *block = _cfg->find_block(block_id);
+        ERR_FAIL_COND_MSG(block == nullptr, "ControlFlowGraph cannot find block");
+
+        // Instructions that will remain after LCSE
+        FastVector<Instruction> keep;
+        // Addresses whose value can be found elsewhere because an assignment
+        // or expression has been elided
+        Map<int, int> swaps;
+
+        // List of currently available expressions
+        FastVector<AvailableExpression> availables;
+
+        for (int i = 0; i < block->instructions.size(); ++i) {
+            Instruction& inst = block->instructions[i];
+
+            // Check if either expression operand should be directed
+            // elsewhere
+            bool resort_operands = false;
+            if ((inst.defuse_mask & INSTRUCTION_DEFUSE_SOURCE0) != 0) {
+                if (swaps.has(inst.source_address0)) {
+                    inst.source_address0 = swaps[inst.source_address0];
+                    resort_operands = true;
+                }
+            }
+            if ((inst.defuse_mask & INSTRUCTION_DEFUSE_SOURCE1) != 0) {
+                if (swaps.has(inst.source_address1)) {
+                    inst.source_address1 = swaps[inst.source_address1];
+                    resort_operands = true;
+                }
+            }
+            if (resort_operands) {
+                inst.sort_operands();
+            }
+
+            bool will_keep = true;
+            bool invalidate = false;
+
+            if (OpExpression::is_instruction_expression(inst)) {
+                OpExpression expr = OpExpression::from_instruction(inst);
+                AvailableExpression* available = find_available_expression(availables, expr);
+                
+                // Did not find this expression available, so add it to the list
+                if (available == nullptr) {
+                    AvailableExpression ae;
+                    ae.target_address = inst.target_address;
+                    ae.expression = expr;
+                    availables.push(ae);
+                
+                    // Invalidate swap record because the target address
+                    // has a new value. 
+                    invalidate = true;
+                } else {
+                    // Expression is available, so don't keep instruction
+                    will_keep = false;
+
+                    // Record that the result of this expression can be found
+                    // elsewhere
+                    swaps.insert(inst.target_address, available->target_address);
+                }
+            } else {
+                if ((inst.defuse_mask & INSTRUCTION_DEFUSE_TARGET) != 0) {
+                    invalidate = true;
+                }
+            }
+
+            if (invalidate) {
+                for (int j = 0; j < availables.size(); ++j) {
+                    AvailableExpression& ae = availables[j];
+                    if (ae.expression.uses(inst.target_address)) {
+                        ae.removed = true;
+                    }
+                }
+
+                swaps.erase(inst.target_address);
+            }
+
+            if (will_keep) {
+                keep.push(inst);
+            }
+        }
+
+        // Replace block instructions with keep
+        block->instructions.clear();
+        block->instructions.push_many(keep);
+
+        // Any swaps that are still alive and used by subsequent blocks
+        // need to be stored back in their original destinations
+        for (Map<int, int>::Element *E = swaps.front(); E; E = E->next()) {
+            if (block->outs.has(E->key())) {
+                Instruction assignment;
+                assignment.opcode = GDScriptFunction::Opcode::OPCODE_ASSIGN;
+                assignment.target_address = E->key();
+                assignment.source_address0 = E->value();
+                assignment.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
+                block->instructions.push(assignment);
+            }
+        }
+
+        worklist.push_many(block->forward_edges);
+    }
+}
+
 void GDScriptFunctionOptimizer::pass_global_common_subexpression_elimination() {
+
 }
 
 void GDScriptFunctionOptimizer::pass_register_allocation() {

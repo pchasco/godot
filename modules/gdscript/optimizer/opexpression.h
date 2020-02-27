@@ -26,6 +26,7 @@ public:
     friend bool operator< (const OpExpression& p_a, const OpExpression& p_b); 
     friend bool operator== (const OpExpression& p_a, const OpExpression& p_b);
     static OpExpression from_instruction(const Instruction& instruction);
+    static bool is_instruction_expression(const Instruction& instruction);
 };
 
 #endif

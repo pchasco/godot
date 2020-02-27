@@ -28,6 +28,27 @@ String Instruction::arguments_to_string() const {
     return result;
 }
 
+void Instruction::sort_operands() {
+    if (opcode == GDScriptFunction::Opcode::OPCODE_OPERATOR) {
+        switch (variant_op) {
+            // Sort operands of commutative ops to make it easier
+            // to perform certain optimizations
+            case Variant::Operator::OP_ADD:
+            case Variant::Operator::OP_AND:
+            case Variant::Operator::OP_OR:
+            case Variant::Operator::OP_MULTIPLY:
+                if (source_address1 < source_address0) {
+                    int temp = source_address0;
+                    source_address0 = source_address1;
+                    source_address1 = temp;
+                }
+            default:
+                // do nothing
+                break;
+        }
+    }
+}
+
 String Instruction::to_string() const {
     switch (opcode) {
         case GDScriptFunction::Opcode::OPCODE_OPERATOR: {
@@ -448,7 +469,7 @@ Instruction Instruction::parse(const int* code, int index, const int buffer_size
             index += 2;
             break;
         case GDScriptFunction::Opcode::OPCODE_JUMP:
-            BOUNDS_CHECK(2);
+            BOUNDS_CHECK(1);
             inst.branch_ip = code[index + 1];
             index += 2;
             break;
@@ -559,6 +580,7 @@ Instruction Instruction::parse(const int* code, int index, const int buffer_size
     }
 
     inst.stride = index - inst_start_ip;
+    inst.sort_operands();
 
     return inst;
 }

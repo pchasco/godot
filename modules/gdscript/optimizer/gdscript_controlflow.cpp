@@ -35,10 +35,11 @@ void Block::replace_jumps(Block& original_block, Block& target_block) {
     }
 
     for (int i = 0; i < forward_edges.size(); ++i) {
-        if (forward_edges[0] == original_block.id) {
-            forward_edges[1] = target_block.id;
+        if (forward_edges[i] == original_block.id) {
+            forward_edges[i] = target_block.id;
         }
     }
+
     target_block.back_edges.insert(id);
     original_block.back_edges.erase(id);
 }
@@ -98,8 +99,11 @@ int Block::calculate_bytecode_size(bool include_jump) {
             size += 2;
         }
         break;
-    case Block::Type::BRANCH_IF:
-        size += (include_jump ? 5 : 3);
+    case Block::Type::BRANCH_IF_NOT:
+        size += 3; // for JUMP_IF
+        if (include_jump) {
+            size += 2; // for JUMP
+        }
         break;
     case Block::Type::DEFARG_ASSIGNMENT:
         size += forward_edges.size();
@@ -172,16 +176,24 @@ void ControlFlowGraph::build_blocks() {
 
     // Precache the list of jump target addresses. We can use this
     // to know whether or not a block is a jump target
+    int ip = 0;
     for (int i = 0; i < _instructions.size(); ++i) {
         Instruction& inst = _instructions[i];
+        int next_ip = ip + inst.stride;
 
         switch (inst.opcode) {
             case GDScriptFunction::Opcode::OPCODE_JUMP:
+                jump_targets.push(inst.branch_ip);
+                break;
             case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
             case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
+                jump_targets.push(inst.branch_ip);
+                jump_targets.push(next_ip); // We will be placing a jump to the next block
+                break;
             case GDScriptFunction::Opcode::OPCODE_ITERATE:
             case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
                 jump_targets.push(inst.branch_ip);
+                jump_targets.push(next_ip); // We will be placing a jump to the next block
                 break;
             case GDScriptFunction::Opcode::OPCODE_RETURN:
                 jump_targets.push(_exit_id);
@@ -193,6 +205,8 @@ void ControlFlowGraph::build_blocks() {
                 }
                 break;
         }
+
+        ip = next_ip;
     }
 
     // We will use the jump table to avoid altering some blocks by inserting goto which would
@@ -251,39 +265,41 @@ void ControlFlowGraph::build_blocks() {
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-                    worklist.push(inst.branch_ip);
                     worklist.push(next_ip);
-                    block.block_type = Block::Type::BRANCH_IF;
+                    worklist.push(inst.branch_ip);
+                    block.block_type = Block::Type::BRANCH_IF_NOT;
+                    // Implement JUMP_IF by inverting and using JUMP_IF_NOT
+                    // Seems counter-intuitive but generates better code most
+                    // of the time.
                     block.forward_edges.push(inst.branch_ip);
                     block.forward_edges.push(next_ip);
                     block.jump_condition_address = inst.source_address0;
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-                    worklist.push(inst.branch_ip);
                     worklist.push(next_ip);
-                    block.block_type = Block::Type::BRANCH_IF;
-                    // JUMP_IF_NOT is implemented with BRANCH_IF by swapping the target addresses
+                    worklist.push(inst.branch_ip);
+                    block.block_type = Block::Type::BRANCH_IF_NOT;
                     block.forward_edges.push(next_ip);
                     block.forward_edges.push(inst.branch_ip);
                     block.jump_condition_address = inst.source_address0;
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_ITERATE:
-                    worklist.push(next_ip);
                     worklist.push(inst.branch_ip);
+                    worklist.push(next_ip);
                     block.block_type = Block::Type::ITERATE;
-                    block.forward_edges.push(inst.branch_ip);
                     block.forward_edges.push(next_ip);
+                    block.forward_edges.push(inst.branch_ip);
                     block.jump_condition_address = inst.source_address0;
                     done = true;
                     break;
                 case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-                    worklist.push(next_ip);
                     worklist.push(inst.branch_ip);
+                    worklist.push(next_ip);
                     block.block_type = Block::Type::ITERATE_BEGIN;
-                    block.forward_edges.push(inst.branch_ip);
                     block.forward_edges.push(next_ip);
+                    block.forward_edges.push(inst.branch_ip);
                     block.jump_condition_address = inst.source_address0;
                     done = true;
                     break;
@@ -294,13 +310,13 @@ void ControlFlowGraph::build_blocks() {
                     break;
                 case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
                     // Can't use defarg_jump_table because we popped one out. Refer back to function
+                    block.forward_edges.push(next_ip);
                     for (int defarg = 0; defarg < _function->get_default_argument_count(); ++defarg) {
                         int defarg_ip = _function->get_default_argument_addr(defarg);
                         block.forward_edges.push(defarg_ip);
                         worklist.push(defarg_ip);
                     }
                     block.block_type = Block::Type::DEFARG_ASSIGNMENT;
-                    block.forward_edges.push(next_ip);
                     worklist.push(next_ip);
                     done = true;
                     break;
@@ -308,6 +324,16 @@ void ControlFlowGraph::build_blocks() {
                 default:
                     // Any other instruction gets pushed to the block instructions
                     block.instructions.push(inst);
+
+                    // We happened upon a jump target address 
+                    // without branching from this block. Start a new block
+                    // and add an edge to the new block
+                    if (jump_targets.has(next_ip)) {
+                        block.forward_edges.push(next_ip);
+                        worklist.push(next_ip);
+                        done = true;
+                    }
+
                     break;
             } 
 
@@ -433,13 +459,16 @@ void ControlFlowGraph::analyze_data_flow() {
 
             // Update this block's ins with the jump condition address, if applicable
             switch (block->block_type) {
-                case Block::Type::BRANCH_IF:
+                case Block::Type::BRANCH_IF_NOT:
                 case Block::Type::ITERATE:
                 case Block::Type::ITERATE_BEGIN:
                     if (!block->defs.has(block->jump_condition_address)) {
-                        block->ins.insert(block->jump_condition_address);
-                        repeat = true;
+                        if (!block->ins.has(block->jump_condition_address)) {
+                            block->ins.insert(block->jump_condition_address);
+                            repeat = true;
+                        }
                     }
+                    break;
             }
 
             for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
@@ -459,7 +488,6 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
     FastVector<int> bytecode;
     FastVector<int> blocks_in_order;
     Map<int, int> block_ip_index;
-    int ip = 0;
 
     // Keep a list of the default argument assignment blocks to refer back to later. We use this
     // to avoid modifying them
@@ -494,10 +522,11 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
         }
 
         blocks_in_order.push(block_id);
-        worklist.push_many(block->forward_edges.size(), block->forward_edges.ptr());
+        worklist.push_many(block->forward_edges);
     }
 
     // Now build an index of the blocks and their starting offset in the bytecode
+    int ip = 0;
     for (int block_index = 0; block_index < blocks_in_order.size(); ++block_index) {
         // Remember the beginning ip offset of this block
         int block_id = blocks_in_order[block_index];
@@ -506,12 +535,16 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
         // Move ip offset forward by block size. Include the final jump instruction
         // of the block only if the next block is not guaranteed next in bytecode
         Block *block = find_block(block_id);
-        if (block->block_type == Block::Type::NORMAL
+        if (block->forward_edges.size()
         && block_index < blocks_in_order.size() - 1
         && blocks_in_order[block_index + 1] == block->forward_edges[0]) {
             ip += block->calculate_bytecode_size(false);
         } else {
-            ip += block->calculate_bytecode_size(true);
+            if (block->forward_edges.size()) {
+                ip += block->calculate_bytecode_size(true);
+            } else {
+                ip += block->calculate_bytecode_size(false);
+            }
         }
     }
 
@@ -727,12 +760,12 @@ FastVector<int> ControlFlowGraph::get_bytecode() {
                 // Dont emit the unconditional jump just yet...
                 unconditional_jump_block_id = block->forward_edges[0];
                 break;
-            case Block::Type::BRANCH_IF:
+            case Block::Type::BRANCH_IF_NOT:
                 // Do emit conditional jumps here
-                bytecode.push(GDScriptFunction::Opcode::OPCODE_JUMP_IF);
+                bytecode.push(GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT);
                 bytecode.push(block->jump_condition_address);
-                bytecode.push(block_ip_index[block->forward_edges[0]]);
-                unconditional_jump_block_id = block->forward_edges[1];
+                bytecode.push(block_ip_index[block->forward_edges[1]]);
+                unconditional_jump_block_id = block->forward_edges[0];
                 break;
             case GDScriptFunction::Opcode::OPCODE_JUMP_TO_DEF_ARGUMENT:
                 break;

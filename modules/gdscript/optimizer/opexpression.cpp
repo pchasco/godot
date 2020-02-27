@@ -13,7 +13,7 @@ bool OpExpression::uses(int address) const {
     return false;
 }
 
-static bool operator< (const OpExpression& p_a, const OpExpression& p_b) {
+bool operator< (const OpExpression& p_a, const OpExpression& p_b) {
     if (p_a.opcode < p_b.opcode) {
         return true;
     }
@@ -44,7 +44,7 @@ static bool operator< (const OpExpression& p_a, const OpExpression& p_b) {
     return false;
 }
 
-static bool operator== (const OpExpression& p_a, const OpExpression& p_b) {
+bool operator== (const OpExpression& p_a, const OpExpression& p_b) {
     if (p_a.opcode != p_b.opcode) {
         return false;
     }
@@ -58,17 +58,17 @@ static bool operator== (const OpExpression& p_a, const OpExpression& p_b) {
         return false;
     }
     if (p_a.defuse_mask & p_b.defuse_mask & INSTRUCTION_DEFUSE_SOURCE0) {
-        if (p_a.source_address0 != p_a.source_address0) {
+        if (p_a.source_address0 != p_b.source_address0) {
             return false;
         }
     }
     if (p_a.defuse_mask & p_b.defuse_mask & INSTRUCTION_DEFUSE_SOURCE1) {
-        if (p_a.source_address1 != p_a.source_address1) {
+        if (p_a.source_address1 != p_b.source_address1) {
             return false;
         }
     }        
 
-    return false;
+    return true;
 }
 
 OpExpression OpExpression::from_instruction(const Instruction& instruction) {
@@ -82,4 +82,14 @@ OpExpression OpExpression::from_instruction(const Instruction& instruction) {
     expr.source_address1 = instruction.source_address1;
 
     return expr;
+}
+
+bool OpExpression::is_instruction_expression(const Instruction& instruction) {
+    switch (instruction.opcode) {
+        case GDScriptFunction::Opcode::OPCODE_OPERATOR:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN:
+            return true;
+        default:
+            return false;
+    }
 }
