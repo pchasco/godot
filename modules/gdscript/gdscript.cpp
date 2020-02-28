@@ -618,6 +618,7 @@ Error GDScript::reload(bool p_keep_state) {
 		optimizer3.get_cfg()->debug_print_instructions();
 		optimizer3.pass_local_common_subexpression_elimination();
 		optimizer3.pass_dead_assignment_elimination();
+		optimizer3.pass_jump_threading();
 		//optimizer.get_cfg()->debug_print_instructions();
 
 		//optimizer.pass_register_allocation();

@@ -147,8 +147,8 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
 
         // If this block only contains a jump then we can
         // remove it if it is not in the default argument jump table (could happen after dead code elimination)
-        if (contains_only_jump 
-            && jump_count == 1 
+        if (block->instructions.size() == 0
+            && block->block_type != Block::Type::TERMINATOR
             && block->id != entry_block->id
             && block->id != exit_block->id
             && !defarg_jumps.has(block->id)) {
