@@ -105,72 +105,88 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
 
     Block *exit_block = _cfg->get_exit_block();
-    FastVector<int> worklist;
-    FastVector<int> visited;
-    FastVector<int> blocks_to_remove;
-    FastVector<int> defarg_jumps = get_function_default_argument_jump_table(_function);
 
-    worklist.push(entry_block->id);
+    bool made_changes = true;
+    while (made_changes) {
+        made_changes = false;
 
-    while(!worklist.empty()) {
-        int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
+        FastVector<int> worklist;
+        FastVector<int> visited;
+        FastVector<int> blocks_to_remove;
+        FastVector<int> defarg_jumps = get_function_default_argument_jump_table(_function);
 
-        visited.push(block_id);
+        worklist.push(entry_block->id);
 
-        Block *block = _cfg->find_block(block_id);
-
-        bool contains_only_jump = true;
-        int jump_count = 0;
-
-        for (int i = 0; i < block->instructions.size(); ++i) {
-            Instruction& inst = block->instructions[i];
-            switch (inst.opcode) {
-                case GDScriptFunction::Opcode::OPCODE_LINE:
-                case GDScriptFunction::Opcode::OPCODE_BREAKPOINT:
-                    // Do nothing
-                    break;
-                case GDScriptFunction::Opcode::OPCODE_JUMP:
-                    jump_count += 1;
-                    break;
-                default:
-                    contains_only_jump = false;
-                    break;
+        while(!worklist.empty()) {
+            int block_id = worklist.pop();
+            if (visited.has(block_id)) {
+                continue;
             }
 
-            if (jump_count > 1 || !contains_only_jump) {
-                break;
+            visited.push(block_id);
+
+            Block *block = _cfg->find_block(block_id);
+
+            bool contains_only_jump = true;
+            int jump_count = 0;
+
+            for (int i = 0; i < block->instructions.size(); ++i) {
+                Instruction& inst = block->instructions[i];
+                switch (inst.opcode) {
+                    case GDScriptFunction::Opcode::OPCODE_LINE:
+                    case GDScriptFunction::Opcode::OPCODE_BREAKPOINT:
+                        // Do nothing
+                        break;
+                    case GDScriptFunction::Opcode::OPCODE_JUMP:
+                        jump_count += 1;
+                        break;
+                    default:
+                        contains_only_jump = false;
+                        break;
+                }
+
+                if (jump_count > 1 || !contains_only_jump) {
+                    break;
+                }
             }
+
+            // If this block only contains a jump then we can
+            // remove it if it is not in the default argument jump table (could happen after dead code elimination)
+            if (block->instructions.size() == 0
+                && block->block_type != Block::Type::TERMINATOR
+                && block->id != entry_block->id
+                && block->id != exit_block->id
+                && !defarg_jumps.has(block->id)) {
+                blocks_to_remove.push(block->id);
+                made_changes = true;
+            }
+
+            // If a conditional branch block targets the same address
+            // on all its edges we can replace it with a non-conditional
+            // block
+            if (block->block_type == Block::Type::BRANCH_IF_NOT
+            && block->forward_edges[0] == block->forward_edges[1]) {
+                block->block_type = Block::Type::NORMAL;
+                made_changes = true;
+            }
+
+            worklist.push_many(block->forward_edges);
         }
 
-        // If this block only contains a jump then we can
-        // remove it if it is not in the default argument jump table (could happen after dead code elimination)
-        if (block->instructions.size() == 0
-            && block->block_type != Block::Type::TERMINATOR
-            && block->id != entry_block->id
-            && block->id != exit_block->id
-            && !defarg_jumps.has(block->id)) {
-            blocks_to_remove.push(block->id);
+        for (int i = 0; i < blocks_to_remove.size(); ++i) {
+            Block *block = _cfg->find_block(blocks_to_remove[i]);
+            // We know there is only one succ block
+            Block *succ = _cfg->find_block(block->forward_edges[0]);
+
+            // For all blocks jumping to this block, just jump to succ block instead
+            for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
+                Block *pred = _cfg->find_block(E->get());
+                pred->replace_jumps(*block, *succ);
+            }
+
+            // We don't remove the block from the cfg here. Dead block
+            // removal pass will take care of these.
         }
-
-        worklist.push_many(block->forward_edges);
-    }
-
-    for (int i = 0; i < blocks_to_remove.size(); ++i) {
-        Block *block = _cfg->find_block(blocks_to_remove[i]);
-        // We know there is only one succ block
-        Block *succ = _cfg->find_block(block->forward_edges[0]);
-
-        // For all blocks jumping to this block, just jump to succ block instead
-        for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
-            Block *pred = _cfg->find_block(E->get());
-            pred->replace_jumps(*block, *succ);
-        }
-
-        // We don't remove the block from the cfg here. Dead block
-        // removal pass will take care of these.
     }
 }
 
