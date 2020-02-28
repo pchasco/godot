@@ -610,9 +610,14 @@ Error GDScript::reload(bool p_keep_state) {
 	for (Map<StringName, GDScriptFunction *>::Element *E = member_functions.front(); E; E = E->next()) {
 		GDScriptFunctionOptimizer optimizer(E->get());
 		optimizer.begin();
-		optimizer.get_cfg()->debug_print_instructions();
 		optimizer.pass_strip_debug();
-		optimizer.pass_local_common_subexpression_elimination();
+		optimizer.commit();
+
+		GDScriptFunctionOptimizer optimizer3(E->get());
+		optimizer3.begin();
+		optimizer3.get_cfg()->debug_print_instructions();
+		optimizer3.pass_local_common_subexpression_elimination();
+		optimizer3.pass_dead_assignment_elimination();
 		//optimizer.get_cfg()->debug_print_instructions();
 
 		//optimizer.pass_register_allocation();
@@ -626,7 +631,7 @@ Error GDScript::reload(bool p_keep_state) {
 		//optimizer.get_cfg()->debug_print();
 		//print_line("Function: " + E->get()->get_name());
 		//print_line("  Pre-optimized instruction count: " + itos(E->get()->get_code_size()));
-		optimizer.commit();
+		optimizer3.commit();
 		//print_line("  Post-optimized instruction count: " + itos(E->get()->get_code_size()));
 	
 		GDScriptFunctionOptimizer optimizer2(E->get());

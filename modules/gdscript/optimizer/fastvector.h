@@ -80,7 +80,7 @@ public:
 		_top += 1;
 	}
 
-	void push_many(int count, const T* p_values) {
+	void push_many(unsigned int count, const T* p_values) {
 		for (int i = 0; i < count; ++i) {
 			push(p_values[i]);
 		}
@@ -104,7 +104,7 @@ public:
 		return _top == 0;
 	}
 
-	T *address_of(int p_index) const {
+	T *address_of(unsigned int p_index) const {
 		if (p_index < 0 || p_index >= _top) {
 			ERR_FAIL_V_MSG(nullptr, "Index out of range");
 		}
@@ -116,7 +116,15 @@ public:
 		return _top;
 	}
 
-	T &operator[](int p_index) const {
+	T& operator[](unsigned int p_index) {
+		if (p_index < 0 || p_index >= _top) {
+			ERR_FAIL_V_MSG(*((T*)nullptr), "Index out of range");
+		}
+
+		return _data[p_index];
+	}
+
+	const T& operator[](unsigned int p_index) const {
 		if (p_index < 0 || p_index >= _top) {
 			ERR_FAIL_V_MSG(*((T*)nullptr), "Index out of range");
 		}

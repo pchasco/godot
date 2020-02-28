@@ -18,6 +18,7 @@ public:
     bool is_branch() const;
 	String to_string() const;
     void sort_operands();
+    bool may_have_side_effects() const;
 
 public:
     GDScriptFunction::Opcode opcode;
@@ -39,7 +40,7 @@ public:
 
 public:
     static Instruction parse(const int* buffer, const int index, const int buffer_size);
-
+    static int normalize_address(int address);
 private:
 	String arguments_to_string() const;
 };

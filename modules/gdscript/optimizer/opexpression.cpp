@@ -6,8 +6,8 @@
 bool OpExpression::uses(int address) const {
     if (((defuse_mask & INSTRUCTION_DEFUSE_SOURCE0) != 0)
     || ((defuse_mask & INSTRUCTION_DEFUSE_SOURCE1) != 0)) {
-        return source_address0 == address
-            || source_address1 == address;
+        return Instruction::normalize_address(source_address0) == Instruction::normalize_address(address)
+            || Instruction::normalize_address(source_address1) == Instruction::normalize_address(address);
     }
 
     return false;

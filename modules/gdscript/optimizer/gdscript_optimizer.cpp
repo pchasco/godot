@@ -249,7 +249,7 @@ void GDScriptFunctionOptimizer::pass_available_expression_analysis() {
 
 AvailableExpression* find_available_expression(const FastVector<AvailableExpression>& availables, const OpExpression& expression) {
     for (int i = 0; i < availables.size(); ++i) {
-        AvailableExpression& current = availables[i];
+        const AvailableExpression& current = availables[i];
         if (!current.removed) {
             if (current.expression == expression) {
                 return availables.address_of(i);
@@ -258,6 +258,92 @@ AvailableExpression* find_available_expression(const FastVector<AvailableExpress
     }
 
     return nullptr;
+}
+
+void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
+    _cfg->analyze_data_flow();
+
+    Block *entry_block = _cfg->get_entry_block();
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
+
+    Block *exit_block = _cfg->get_exit_block();
+
+    bool made_changes = true;
+    while (made_changes) {
+        made_changes = false;
+
+        FastVector<int> worklist;
+        FastVector<int> visited;
+        worklist.push(exit_block->id);
+
+        while(!worklist.empty()) {
+            int block_id = worklist.pop();
+            if (visited.has(block_id)) {
+                continue;
+            }
+
+            visited.push(block_id);
+
+            Block *block = _cfg->find_block(block_id);
+            ERR_FAIL_COND_MSG(block == nullptr, "ControlFlowGraph cannot find block");
+
+            // Instructions that will remain after LCSE
+            FastVector<Instruction> keep;
+
+            // Prime uses with the block out values gathered by data flow analysis
+            Set<int> uses;
+            for (Set<int>::Element *E = block->outs.front(); E; E = E->next()) {
+                uses.insert(E->get());
+            }
+
+            // Iterate over instructions in reverse. If value is defined but
+            // not in uses set then the assignment is dead
+            for (int i = block->instructions.size() - 1; i >= 0; --i) {
+                Instruction& inst = block->instructions[i];
+                bool will_keep = true;
+
+                if ((inst.defuse_mask & INSTRUCTION_DEFUSE_TARGET) != 0) {
+                    if (!inst.may_have_side_effects() && !uses.has(inst.target_address)) {
+                        will_keep = false;
+                        made_changes = true;
+                    }
+                }
+
+                if (will_keep) {                
+                    if ((inst.defuse_mask & INSTRUCTION_DEFUSE_TARGET) != 0) {
+                        uses.erase(inst.target_address);
+                    }
+
+                    if ((inst.defuse_mask & INSTRUCTION_DEFUSE_SOURCE0) != 0) {
+                        uses.insert(inst.source_address0);
+                    }
+                    if ((inst.defuse_mask & INSTRUCTION_DEFUSE_SOURCE1) != 0) {
+                        uses.insert(inst.source_address1);
+                    }
+                    if ((inst.defuse_mask & INSTRUCTION_DEFUSE_VARARGS) != 0) {
+                        for (int j = 0; j < inst.varargs.size(); ++j) {
+                            uses.insert(inst.varargs[j]);
+                        }
+                    }
+
+                    keep.push(inst);
+                }
+            }
+
+            // Replace block instructions with keep. We iterated over
+            // instructions in reverse order, so we need to push them
+            // in reverse order also.
+            block->instructions.clear();
+            for (int i = keep.size() - 1; i >= 0; --i) {
+                block->instructions.push(keep[i]);
+            }
+
+            for (Set<int>::Element *E = block->back_edges.front(); E; E = E->next()) {
+                worklist.push(E->get());
+            }
+        }
+    }
 }
 
 void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
@@ -311,6 +397,15 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
                     resort_operands = true;
                 }
             }
+            if ((inst.defuse_mask & INSTRUCTION_DEFUSE_VARARGS) != 0) {
+                for (int j = 0; j < inst.varargs.size(); ++j) {
+                    int arg_address = Instruction::normalize_address(inst.varargs[j]);
+                    if (swaps.has(arg_address)) {
+                        inst.varargs[j] = swaps[arg_address];
+                        // No need to resort just for this
+                    }
+                }
+            }
             if (resort_operands) {
                 inst.sort_operands();
             }
@@ -362,7 +457,6 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
             }
         }
 
-        // Replace block instructions with keep
         block->instructions.clear();
         block->instructions.push_many(keep);
 

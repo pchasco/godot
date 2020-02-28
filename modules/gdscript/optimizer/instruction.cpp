@@ -1,5 +1,21 @@
 #include "core/os/memory.h"
+#include "modules/gdscript/gdscript_function.h"
 #include "instruction.h"
+
+// ADDR_TYPE_STACK_VARIABLE and ADDR_TYPE_STACK are equivalent in the
+// GDScript function state, so we remap one so that they share addresses.
+// This makes many optimizations easier.
+int Instruction::normalize_address(int address) {
+    int address_type = (address & GDScriptFunction::Address::ADDR_TYPE_MASK) >> GDScriptFunction::Address::ADDR_BITS;
+    switch (address_type) {
+        case GDScriptFunction::Address::ADDR_TYPE_STACK_VARIABLE: {
+            int offset = address & GDScriptFunction::Address::ADDR_MASK;
+            return (GDScriptFunction::Address::ADDR_TYPE_STACK << GDScriptFunction::Address::ADDR_BITS) | offset;
+        }
+        default:
+            return address;
+    }
+}
 
 bool Instruction::is_branch() const {
     switch (opcode) {
@@ -29,6 +45,16 @@ String Instruction::arguments_to_string() const {
 }
 
 void Instruction::sort_operands() {
+    if ((defuse_mask & INSTRUCTION_DEFUSE_SOURCE0)) {
+        source_address0 = normalize_address(source_address0);
+    }    
+    if ((defuse_mask & INSTRUCTION_DEFUSE_SOURCE1)) {
+        source_address1 = normalize_address(source_address1);
+    }
+    if ((defuse_mask & INSTRUCTION_DEFUSE_TARGET)) {
+        target_address = normalize_address(target_address);
+    }
+
     if (opcode == GDScriptFunction::Opcode::OPCODE_OPERATOR) {
         switch (variant_op) {
             // Sort operands of commutative ops to make it easier
@@ -46,6 +72,26 @@ void Instruction::sort_operands() {
                 // do nothing
                 break;
         }
+    }
+
+    // We do not sort varargs but we do want them normalized
+    for (int i = 0; i < varargs.size(); ++i) {
+        varargs[i] = normalize_address(varargs[i]);
+    }
+}
+
+bool Instruction::may_have_side_effects() const {
+    switch (opcode) {
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_FALSE:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TRUE:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_BUILTIN:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_NATIVE:
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_SCRIPT:
+        case GDScriptFunction::Opcode::OPCODE_OPERATOR:
+            return false;
+        default:
+            return true;
     }
 }
 

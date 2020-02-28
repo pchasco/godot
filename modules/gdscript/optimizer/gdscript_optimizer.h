@@ -25,6 +25,7 @@ public:
 	// Transform passes
 	void pass_jump_threading();
 	void pass_dead_block_elimination();
+	void pass_dead_assignment_elimination();
 	void pass_local_common_subexpression_elimination();
 	void pass_global_common_subexpression_elimination();
 	void pass_strip_debug();

@@ -142,6 +142,8 @@ void ControlFlowGraph::disassemble() {
     int code_size = _function->get_code_size();
     while (ip < code_size) {
         Instruction inst = Instruction::parse(code, ip, code_size);
+        inst.sort_operands();
+
         ip += inst.stride;
         _instructions.push(inst);
     }
@@ -870,7 +872,7 @@ void ControlFlowGraph::debug_print_instructions() const {
     print_line("------ Instructions ------");
     int ip = 0;
     for (int i = 0; i < _instructions.size(); ++i) {
-        Instruction& inst = _instructions[i];
+        const Instruction& inst = _instructions[i];
         print_line(itos(ip) + ": " + inst.to_string());
         ip += inst.stride;
     }
