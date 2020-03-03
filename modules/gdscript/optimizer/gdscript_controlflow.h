@@ -30,7 +30,12 @@ public:
 	int id;
 	
 	Type block_type;
-	int jump_condition_address;
+	union {
+		int jump_condition_address;
+		int iterator_counter_address;
+	};
+	int iterator_container_address;
+	int iterator_value_address;
 
 	int force_code_size;
 	FastVector<Instruction> instructions;
@@ -56,7 +61,7 @@ public:
 	Block* get_exit_block() const;
 	Block* get_block(int index) const { return _blocks.address_of(index); }
 	int get_block_count() const { return _blocks.size(); }
-	FastVector<int> get_bytecode();
+	FastVector<int> assemble();
 	void remove_dead_blocks();
 	void analyze_data_flow();
 

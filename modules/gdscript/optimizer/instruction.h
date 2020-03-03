@@ -19,6 +19,7 @@ public:
 	String to_string() const;
     void sort_operands();
     bool may_have_side_effects() const;
+    void encode(FastVector<int>& buffer) const;
 
 public:
     GDScriptFunction::Opcode opcode;

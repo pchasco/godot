@@ -6,6 +6,7 @@
 GDScriptFunctionOptimizer::GDScriptFunctionOptimizer(GDScriptFunction *function) {
     _function = function;
     _cfg = nullptr;
+    _is_data_flow_dirty = false;
 }
 
 void GDScriptFunctionOptimizer::begin() {
@@ -16,10 +17,12 @@ void GDScriptFunctionOptimizer::begin() {
 
     _cfg = new ControlFlowGraph(_function);
     _cfg->construct();
+
+    invalidate_data_flow();
 }
 
 void GDScriptFunctionOptimizer::commit() {
-    FastVector<int> bytecode = _cfg->get_bytecode();
+    FastVector<int> bytecode = _cfg->assemble();
     _function->code.clear();
 
 	if (bytecode.size() > 0) {
@@ -38,6 +41,7 @@ void GDScriptFunctionOptimizer::commit() {
 
     delete _cfg;
     _cfg = nullptr;
+    _is_data_flow_dirty = true;
 }
 
 void GDScriptFunctionOptimizer::pass_strip_debug() {
@@ -127,36 +131,13 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
 
             Block *block = _cfg->find_block(block_id);
 
-            bool contains_only_jump = true;
-            int jump_count = 0;
-
-            for (int i = 0; i < block->instructions.size(); ++i) {
-                Instruction& inst = block->instructions[i];
-                switch (inst.opcode) {
-                    case GDScriptFunction::Opcode::OPCODE_LINE:
-                    case GDScriptFunction::Opcode::OPCODE_BREAKPOINT:
-                        // Do nothing
-                        break;
-                    case GDScriptFunction::Opcode::OPCODE_JUMP:
-                        jump_count += 1;
-                        break;
-                    default:
-                        contains_only_jump = false;
-                        break;
-                }
-
-                if (jump_count > 1 || !contains_only_jump) {
-                    break;
-                }
-            }
-
             // If this block only contains a jump then we can
             // remove it if it is not in the default argument jump table (could happen after dead code elimination)
             if (block->instructions.size() == 0
-                && block->block_type != Block::Type::TERMINATOR
-                && block->id != entry_block->id
-                && block->id != exit_block->id
-                && !defarg_jumps.has(block->id)) {
+            && block->block_type == Block::Type::NORMAL
+            && block->id != entry_block->id
+            && block->id != exit_block->id
+            && !defarg_jumps.has(block->id)) {
                 blocks_to_remove.push(block->id);
                 made_changes = true;
             }
@@ -187,6 +168,10 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
             // We don't remove the block from the cfg here. Dead block
             // removal pass will take care of these.
         }
+
+        if (made_changes) {
+            invalidate_data_flow();
+        }
     }
 }
 
@@ -199,51 +184,6 @@ int find_alias_index(int *reg_alias, int address) {
 
     return -1;
 }
-
-#ifdef NOPE
-GDScriptFunction::Opcode get_typed_opcode(Variant::Operator op, Variant::Type type) const {
-
-    switch (type) {
-        case Variant::Type::INT:
-            switch (operator) {
-                case Variant::Operator::OP_ADD:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_ADD_INT;
-                case Variant::Operator::OP_SUBTRACT:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_SUB_INT;
-                case Variant::Operator::OP_MULTIPLY:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_MUL_INT;
-                case Variant::Operator::OP_DIVIDE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_DIV_INT;
-                case Variant::Operator::OP_NEGATE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_NEG_INT;
-                case Variant::Operator::OP_POSITIVE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_POS_INT;
-                case Variant::Operator::OP_MODULE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_MOD_INT;
-            }
-        case Variant::Type::REAL:
-            switch (operator) {
-                case Variant::Operator::OP_ADD:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_ADD_REAL;
-                case Variant::Operator::OP_SUBTRACT:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_SUB_REAL;
-                case Variant::Operator::OP_MULTIPLY:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_MUL_REAL;
-                case Variant::Operator::OP_DIVIDE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_DIV_REAL;
-                case Variant::Operator::OP_NEGATE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_NEG_REAL;
-                case Variant::Operator::OP_POSITIVE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_POS_REAL;
-                case Variant::Operator::OP_MODULE:
-                    return GDScriptFunction::Opcode::OPCODE_OPERATOR_MOD_REAL;
-            }
-    }
-
-    return GDScriptFunction::Opcode::OPCODE_OPERATOR;
-}
-#endif
-
 
 class AvailableExpression {
 public:
@@ -276,9 +216,22 @@ AvailableExpression* find_available_expression(const FastVector<AvailableExpress
     return nullptr;
 }
 
+AvailableExpression* find_available_expression_by_target(const FastVector<AvailableExpression>& availables, int target_address) {
+    for (int i = 0; i < availables.size(); ++i) {
+        const AvailableExpression& current = availables[i];
+        if (!current.removed) {
+            if (current.target_address == target_address) {
+                return availables.address_of(i);
+            }
+        }
+    }
+
+    return nullptr;
+}
+
 void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
-    _cfg->analyze_data_flow();
+    need_data_flow();
 
     Block *entry_block = _cfg->get_entry_block();
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
@@ -311,6 +264,14 @@ void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
             Set<int> uses;
             for (Set<int>::Element *E = block->outs.front(); E; E = E->next()) {
                 uses.insert(E->get());
+            }
+
+            // Insert any condition variable used by the block type,
+            // which will be used in the last instruction in the basic block
+            switch (block->block_type) {
+                case Block::Type::BRANCH_IF_NOT:
+                    uses.insert(block->jump_condition_address);
+                    break;
             }
 
             // Iterate over instructions in reverse. If value is defined but
@@ -359,12 +320,20 @@ void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
                 worklist.push(E->get());
             }
         }
+
+        if (made_changes) {
+            invalidate_data_flow();
+        }
     }
 }
 
 void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
-    _cfg->analyze_data_flow();
+    
+    // We need up-to-date data flow for this pass,
+    // but this pass will not alter data flow so we will
+    // not be invalidating it before exit
+    need_data_flow();
 
     Block *entry_block = _cfg->get_entry_block();
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
@@ -465,6 +434,21 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
                     }
                 }
 
+                // If we have elided this assignment we need to store it before
+                // we can change its source value. If the assignment is not used
+                // later it will be removed by dead assignment elimination pass.
+                for (Map<int, int>::Element *E = swaps.front(); E; E = E->next()) {
+                    if (E->value() == inst.target_address) {
+                        Instruction assignment;
+                        assignment.opcode = GDScriptFunction::Opcode::OPCODE_ASSIGN;
+                        assignment.target_address = E->key();
+                        assignment.source_address0 = E->value();
+                        assignment.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
+                        assignment.stride = 3; // todo - don't hard-code
+                        keep.push(assignment);
+                    }
+                }
+            
                 swaps.erase(inst.target_address);
             }
 
@@ -485,6 +469,7 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
                 assignment.target_address = E->key();
                 assignment.source_address0 = E->value();
                 assignment.defuse_mask = INSTRUCTION_DEFUSE_SOURCE0;
+                assignment.stride = 3; // todo - don't hard-code
                 block->instructions.push(assignment);
             }
         }
@@ -493,154 +478,102 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
     }
 }
 
-void GDScriptFunctionOptimizer::pass_global_common_subexpression_elimination() {
+void GDScriptFunctionOptimizer::pass_local_insert_redundant_operations() {
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
+    // Do not need accurate data flow for this pass
+    // Will not invalidate data flow in this pass
 
-}
+    Block *entry_block = _cfg->get_entry_block();
+    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
 
-void GDScriptFunctionOptimizer::pass_register_allocation() {
-#ifdef NOPE
+    Block *exit_block = _cfg->get_exit_block();
+    FastVector<int> worklist;
+    FastVector<int> visited;
 
-    // 1. For each basic block
-    // 1. Find all assignments, call_return, call_built_in whose result is a guaranteed
-    // known type.
-    // 2. For each assignment, insert an unbox operation into a free register. This
-    // register is now an alias for the original value
-    // 3. 
+    worklist.push(entry_block->id);
 
-    _cfg->analyze_data_flow();
-
-    for (int i = 0; i < _cfg->get_block_count(); ++i) {
-        Block *block = _cfg->get_block(i);
-        FastVector<Instruction> new_instructions;
-        FastVector<int> free_int_regs;
-        FastVector<int> free_real_regs;
-        int real_reg_alias[GDSCRIPT_FUNCTION_REGISTER_COUNT];
-        int int_reg_alias[GDSCRIPT_FUNCTION_REGISTER_COUNT];
-
-        for (int j = 0; j < GDSCRIPT_FUNCTION_REGISTER_COUNT; ++j) {
-            free_real_regs.push(j);
-            free_int_regs.push(j);
-            real_reg_alias[j] = 0;
-            int_reg_alias[j] = 0;
+    while(!worklist.empty()) {
+        int block_id = worklist.pop();
+        if (visited.has(block_id)) {
+            continue;
         }
 
-        for (int j = 0; j < block->instructions.size(); ++j) {
-            Instruction& inst = block->instructions[j];
-            new_instructions.push(inst);
+        visited.push(block_id);
 
-            // If this instruction assigns a guaranteed type value to something,
-            // we can cache the value in a register for possible use later.
-            // Unused assignments will be removed in another pass
-            switch (inst.opcode) {
-                case GDScriptFunction::Opcode::OPCODE_CALL_BUILT_IN:
-                    MethodInfo info = GDScriptFunctions::get_info((GDScriptFunctions::Function)inst.index_arg);
-                    switch (info.return_val.type) {
-                        case Variant::Type::INT:
-                            if (free_int_regs.size()) {
-                                // Select free register for value
-                                int reg_index = free_int_regs.pop();
-                                // create int alias
-                                int_reg_alias[reg_index] = inst.target_address;
+        Block *block = _cfg->find_block(block_id);
+        ERR_FAIL_COND_MSG(block == nullptr, "ControlFlowGraph cannot find block");
 
-                                Instruction box;
-                                box.opcode = GDScriptFunction::Opcode::OPCODE_BOX_INT;
-                                box.target_address = (GDScriptFunction::Address::ADDR_TYPE_INT_REG << GDScriptFunction::Address::ADDR_BITS) | reg_index;
-                                box.source_address0 = inst.target_address;
-                                box.stride = 3;
-                                box.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                                    | INSTRUCTION_DEFUSE_SOURCE0;
+        // Instructions that will remain after LCSE
+        FastVector<Instruction> keep;
 
-                                new_instructions.push(box);
-                            }
-                            break;
-                        case Variant::Type::REAL:
-                            if (free_real_regs.size()) {
-                                // create real alias
-                                int reg_index = free_real_regs.pop();
-                                float_reg_alias[reg_index] = inst.target_address;
+        // List of currently available expressions
+        FastVector<AvailableExpression> availables;
 
-                                Instruction box;
-                                box.opcode = GDScriptFunction::Opcode::OPCODE_BOX_REAL;
-                                box.target_address = (GDScriptFunction::Address::ADDR_TYPE_REAL_REG << GDScriptFunction::Address::ADDR_BITS) | reg_index;
-                                box.source_address0 = inst.target_address;
-                                box.stride = 3;
-                                box.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                                    | INSTRUCTION_DEFUSE_SOURCE0;
+        for (int i = 0; i < block->instructions.size(); ++i) {
+            Instruction& inst = block->instructions[i];
 
-                                new_instructions.push(box);
-                            }
-                            break;
-                        default:
-                            // do nothing
-                            break;
+            bool will_keep = true;
+            bool invalidate = false;
+
+            if (inst.opcode == GDScriptFunction::Opcode::OPCODE_ASSIGN) {
+                AvailableExpression* available = find_available_expression_by_target(availables, inst.source_address0);
+                
+                // If this value is being calculated elsewhere then duplicate
+                // the expression.
+                if (available != nullptr) {
+                    will_keep = false;
+
+                    Instruction assignment;
+                    assignment.opcode = available->expression.opcode;
+                    assignment.variant_op = available->expression.variant_op;
+                    assignment.defuse_mask = available->expression.defuse_mask;
+                    assignment.target_address = inst.target_address;
+                    assignment.source_address0 = available->expression.source_address0;
+                    assignment.source_address1 = available->expression.source_address1;
+                    assignment.stride = 5; // todo: remove hard code
+                    keep.push(assignment);
+                }
+            } else {
+                if (OpExpression::is_instruction_expression(inst)) {
+                    OpExpression expr = OpExpression::from_instruction(inst);
+                    AvailableExpression* available = find_available_expression(availables, expr);
+
+                    // Did not find this expression available, so add it to the list
+                    if (available == nullptr) {
+                        AvailableExpression ae;
+                        ae.target_address = inst.target_address;
+                        ae.expression = expr;
+                        availables.push(ae); 
+
+                        invalidate = true;
                     }
-                    break;
-
-                case GDScriptFunction::Opcode::OPCODE_OPERATOR:
-                    bool is_operator_qualified = false;
-                    bool is_unary_operator = false;
-                    switch (inst.variant_op) {
-                        case Variant::Operator::OP_NEGATE:
-                        case Variant::Operator::OP_POSITIVE:
-                            is_unary_operator = true;
-                        case Variant::Operator::OP_ADD:
-                        case Variant::Operator::OP_SUBTRACT:
-                        case Variant::Operator::OP_MULTIPLY:
-                        case Variant::Operator::OP_DIVIDE:
-                        case Variant::Operator::OP_MODULE: 
-                            is_operator_qualified = true;
-                            break;
+                } else {
+                    if ((inst.defuse_mask & INSTRUCTION_DEFUSE_TARGET) != 0) {
+                        invalidate = true;
                     }
-                    
-                    // This is an operation we can make typed
-                    if (is_operator_qualified) {
-                        if (is_unary_operator) {
-                            // blah
-                        } else {
-                            int *reg_sets[] = { int_reg_alias, real_reg_alias };
-                            FastVector<int> *free_regs[] = { &free_int_regs, &free_real_regs };
-
-                            for (int ri = 0; ri < 2; ++ri) {
-                                // Do we have typed aliases for both operands?
-                                int reg0 = find_reg_alias(reg_sets[ri], inst.source_address0);
-                                int reg1 = find_reg_alias(reg_sets[ri], inst.source_address1);
-                                if (reg0 >= 0 && reg1 >= 0) {
-                                    int reg_target = find_reg_alias(reg_sets[ri], inst.target_address);
-                                    if (reg_target < 0 && reg_sets[ri]->size()) {
-                                        reg_target = reg_sets[ri]->pop();
-                                    }
-                                    if (reg_target >= 0) {
-                                        // This is an operation against two ints
-                                        Instruction op;
-                                        op.opcode = get_typed_opcode(inst.variant_op, Variant::Type::INT);
-                                        op.target_address = (GDScriptFunction::Address::ADDR_TYPE_INT_REG << GDScriptFunction::Address::ADDR_BITS) | reg_target;
-                                        op.source_address0 = (GDScriptFunction::Address::ADDR_TYPE_INT_REG << GDScriptFunction::Address::ADDR_BITS) | reg0;
-                                        op.source_address1 = (GDScriptFunction::Address::ADDR_TYPE_INT_REG << GDScriptFunction::Address::ADDR_BITS) | reg1;
-                                        op.stride = 4;
-                                        op.defuse_mask = INSTRUCTION_DEFUSE_TARGET
-                                            | INSTRUCTION_DEFUSE_SOURCE0
-                                            | INSTRUCTION_DEFUSE_SOURCE1;
-                                        new_instructions.push(op);
-                                    }
-                                }
-                            }
-                        }
+                }
+            }
+            if (invalidate) {   
+                for (int j = 0; j < availables.size(); ++j) {
+                    AvailableExpression& ae = availables[j];
+                    if (ae.expression.uses(inst.target_address)) {
+                        ae.removed = true;
                     }
-                    break;
-            
-                    // Do nothing
-                    break;
+                }
+            }
 
-                default:
-                    // Do nothing
-                    break;
+            if (will_keep) {
+                keep.push(inst);
             }
         }
 
-        // Replace block instructions with new list of instructions.
-        // This technically stales the data flow facts we collected but
-        // we don't need them since we are only operating within blocks
-        block->instructions = new_instructions;
+        block->instructions.clear();
+        block->instructions.push_many(keep);
+
+        worklist.push_many(block->forward_edges);
     }
-#endif
+}
+
+void GDScriptFunctionOptimizer::pass_global_common_subexpression_elimination() {
+
 }

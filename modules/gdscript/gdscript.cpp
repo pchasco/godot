@@ -608,36 +608,67 @@ Error GDScript::reload(bool p_keep_state) {
 
 #ifdef GDSCRIPT_ENABLE_OPTIMIZATION
 	for (Map<StringName, GDScriptFunction *>::Element *E = member_functions.front(); E; E = E->next()) {
-		GDScriptFunctionOptimizer optimizer(E->get());
-		optimizer.begin();
-		optimizer.pass_strip_debug();
-		optimizer.commit();
+		// int passes[] = {
+		// 	0, 1, 
+		// 	6, 4, 3,
+		// 	6, 4, 3,
+		// 	5,
+		// 	0
+		// };
 
-		GDScriptFunctionOptimizer optimizer3(E->get());
-		optimizer3.begin();
-		optimizer3.get_cfg()->debug_print_instructions();
-		optimizer3.pass_local_common_subexpression_elimination();
-		optimizer3.pass_dead_assignment_elimination();
-		optimizer3.pass_jump_threading();
-		//optimizer.get_cfg()->debug_print_instructions();
+		int passes[] = { 999 };
 
-		//optimizer.pass_register_allocation();
+		for (int i = 0; i < sizeof(passes) / sizeof(passes[0]); ++i) {
+			print_line("************ PASS ***************");
+			GDScriptFunctionOptimizer optimizer(E->get());
+			optimizer.begin();
 
-		//optimizer.get_cfg()->analyze_live_variables();
-		//optimizer.get_cfg()->debug_print();
-		//optimizer.get_cfg()->debug_print();
-		//optimizer.pass_jump_threading();
-		//optimizer.get_cfg()->debug_print();
-		//optimizer.pass_dead_block_elimination();
-		//optimizer.get_cfg()->debug_print();
-		//print_line("Function: " + E->get()->get_name());
-		//print_line("  Pre-optimized instruction count: " + itos(E->get()->get_code_size()));
-		optimizer3.commit();
-		//print_line("  Post-optimized instruction count: " + itos(E->get()->get_code_size()));
-	
-		GDScriptFunctionOptimizer optimizer2(E->get());
-		optimizer2.begin();
-		optimizer2.get_cfg()->debug_print_instructions();
+			switch (passes[i]) {
+				case 0:
+					//optimizer.get_cfg()->debug_print();
+					break;
+				case 1:
+					print_line("*** pass_strip_debug");
+					optimizer.get_cfg()->debug_print_instructions();
+					optimizer.pass_strip_debug();
+					break;
+				case 3:
+					print_line("*** pass_local_common_subexpression_elimination");
+					optimizer.get_cfg()->debug_print_instructions();
+					optimizer.pass_local_common_subexpression_elimination();
+					break;
+				case 4:
+					print_line("*** pass_dead_assignment_elimination");
+					optimizer.get_cfg()->debug_print_instructions();
+					optimizer.pass_dead_assignment_elimination();
+					break;
+				case 5:
+					print_line("*** pass_jump_threading");
+					optimizer.get_cfg()->debug_print_instructions();
+					optimizer.pass_jump_threading();
+					break;
+				case 6:
+					print_line("*** pass_local_insert_redundant_operations");
+					optimizer.get_cfg()->debug_print_instructions();
+					optimizer.pass_local_insert_redundant_operations();
+					break;
+
+				case 999:
+					// Do all passes
+					optimizer.pass_strip_debug();
+
+					// todo: don't just do twice. Get feedback and repeat as necessary
+					for (int j = 0; j < 2; ++j) {
+						optimizer.pass_local_insert_redundant_operations();
+						optimizer.pass_dead_assignment_elimination();
+						optimizer.pass_local_common_subexpression_elimination();
+					}
+
+					optimizer.pass_dead_block_elimination();
+					optimizer.pass_jump_threading();
+			}
+			optimizer.commit();
+		}
 	}
 #endif
 

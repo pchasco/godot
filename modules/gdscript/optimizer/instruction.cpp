@@ -155,13 +155,13 @@ String Instruction::to_string() const {
         case GDScriptFunction::Opcode::OPCODE_JUMP:
             return "JUMP " + itos(branch_ip);
         case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
-            return "JUMP_IF " + itos(branch_ip);
+            return "JUMP_IF (" + itos(source_address0) + ") " + itos(branch_ip);
         case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
-            return "JUMP_IF_NOT " + itos(branch_ip);
+            return "JUMP_IF_NOT (" + itos(source_address0) + ") " + itos(branch_ip);
         case GDScriptFunction::Opcode::OPCODE_ITERATE:
-            return "ITERATE (ESCAPE " + itos(branch_ip) + ")";
+            return "ITERATE (ESCAPE " + itos(branch_ip) + ", Counter: " + itos(source_address0) + ", Container: " + itos(source_address1) + ", Target: " + itos(target_address) + ")";
         case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
-            return "ITERATE_BEGIN (ESCAPE " + itos(branch_ip) + ")";
+            return "ITERATE_BEGIN (ESCAPE " + itos(branch_ip) + ", Counter: " + itos(source_address0) + ", Container: " + itos(source_address1) + ", Target: " + itos(target_address) + ")";
         case GDScriptFunction::Opcode::OPCODE_LINE:
             return "LINE";
         case GDScriptFunction::Opcode::OPCODE_RETURN:
@@ -217,8 +217,12 @@ String Instruction::to_string() const {
             for (int i = 0; i < varargs.size(); ++i) {
                 args += " " + itos(varargs[i]);
             }
-            return "CONSTRUCT_ARRAY [" + args + "]";
+            return "CONSTRUCT_ARRAY " + itos(target_address) + " = [" + args + "]";
         }
+        case GDScriptFunction::Opcode::OPCODE_GET:
+            return itos(target_address) + " = " + itos(source_address0) + "[" + itos(index_address) + "]";
+        case GDScriptFunction::Opcode::OPCODE_SET:
+            return itos(target_address) + "[" + itos(index_address) + "] = " + itos(source_address0);
         case GDScriptFunction::Opcode::OPCODE_BOX_INT: {
             return "BOX INT " + itos(source_address0) + " into " + itos(target_address);
         }
@@ -629,4 +633,202 @@ Instruction Instruction::parse(const int* code, int index, const int buffer_size
     inst.sort_operands();
 
     return inst;
+}
+
+void Instruction::encode(FastVector<int>& buffer) const {
+    buffer.push(opcode);
+
+    switch (opcode) {
+        case GDScriptFunction::Opcode::OPCODE_JUMP_IF:
+            buffer.push(source_address0);
+            buffer.push(branch_ip);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_JUMP_IF_NOT:
+            buffer.push(source_address0);
+            buffer.push(branch_ip);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ITERATE:
+            buffer.push(source_address0);
+            buffer.push(source_address1);
+            buffer.push(branch_ip);
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ITERATE_BEGIN:
+            buffer.push(source_address0);
+            buffer.push(source_address1);
+            buffer.push(branch_ip);
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_OPERATOR:
+            buffer.push(variant_op);
+            buffer.push(source_address0);
+            buffer.push(source_address1);
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_EXTENDS_TEST:
+            buffer.push(source_address0);
+            buffer.push(source_address1);
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_IS_BUILTIN:
+            buffer.push(source_address0);
+            buffer.push(target_address);
+            buffer.push(type_arg);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_SET:
+            buffer.push(target_address);
+            buffer.push(index_address); // index
+            buffer.push(source_address0); // value
+            break;
+        case GDScriptFunction::Opcode::OPCODE_GET:
+            // 1 before 0 intentional here
+            buffer.push(source_address0); // value
+            buffer.push(index_address); // index
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_SET_NAMED:
+            buffer.push(source_address0); // value
+            buffer.push(index_arg); // name index
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_GET_NAMED:
+            buffer.push(target_address);
+            buffer.push(index_arg); // name index
+            buffer.push(source_address0); // value
+            break;
+        case GDScriptFunction::Opcode::OPCODE_SET_MEMBER:
+            buffer.push(index_arg); // name index
+            buffer.push(source_address0); // value
+            break;
+        case GDScriptFunction::Opcode::OPCODE_GET_MEMBER:
+            buffer.push(index_arg); // name index
+            buffer.push(target_address); // value
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN:
+            buffer.push(target_address);
+            buffer.push(source_address0); 
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TRUE:
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_FALSE:
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_BUILTIN:
+            buffer.push(type_arg);
+            buffer.push(target_address);
+            buffer.push(source_address0);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_NATIVE:
+            buffer.push(source_address0); // type
+            buffer.push(target_address);
+            buffer.push(source_address1); // source
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSIGN_TYPED_SCRIPT:
+            buffer.push(source_address0); // type
+            buffer.push(target_address);
+            buffer.push(source_address1); // source
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CAST_TO_BUILTIN:
+            buffer.push(type_arg); // variant::type
+            buffer.push(source_address0); // source
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CAST_TO_NATIVE:
+            buffer.push(source_address0); // to type
+            buffer.push(source_address1); // source
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CAST_TO_SCRIPT:
+            buffer.push(source_address0); // to type
+            buffer.push(source_address1); // source
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CONSTRUCT:
+            buffer.push(type_arg);
+            buffer.push(vararg_count);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CONSTRUCT_ARRAY:
+            buffer.push(vararg_count);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CONSTRUCT_DICTIONARY:
+            buffer.push(vararg_count);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CALL:
+        case GDScriptFunction::Opcode::OPCODE_CALL_RETURN:
+            buffer.push(vararg_count);
+            buffer.push(source_address0);
+            buffer.push(index_arg);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            // target_address not used in CALL so it doesn't matter what value target_address has
+            // if op is call_return then target_address will be populated with a valid address
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CALL_BUILT_IN:
+            buffer.push(index_arg); // function index
+            buffer.push(vararg_count);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CALL_SELF:
+            // ?
+            break;
+        case GDScriptFunction::Opcode::OPCODE_CALL_SELF_BASE:
+            buffer.push(index_arg);
+            buffer.push(vararg_count);
+            for (int i = 0; i < vararg_count; ++i) {
+                buffer.push(varargs[i]);
+            }
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_YIELD:
+            break;
+        case GDScriptFunction::Opcode::OPCODE_YIELD_SIGNAL:
+            buffer.push(source_address0);
+            buffer.push(index_arg);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_YIELD_RESUME:
+            buffer.push(target_address);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_ASSERT:
+            buffer.push(source_address0); // test
+            buffer.push(source_address1); // message
+            break;
+        case GDScriptFunction::Opcode::OPCODE_BREAKPOINT:
+            break;
+        case GDScriptFunction::Opcode::OPCODE_LINE:
+            buffer.push(index_arg);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_END:
+            break;
+        case GDScriptFunction::Opcode::OPCODE_RETURN:
+            buffer.push(source_address0);
+            break;
+        case GDScriptFunction::Opcode::OPCODE_BOX_INT:
+        case GDScriptFunction::Opcode::OPCODE_BOX_REAL:
+        case GDScriptFunction::Opcode::OPCODE_UNBOX_INT:
+        case GDScriptFunction::Opcode::OPCODE_UNBOX_REAL:
+            buffer.push(source_address0);
+            buffer.push(target_address);
+            break;
+        default:
+            ERR_FAIL_MSG("Invalid opcode");
+            break;
+    }
 }
