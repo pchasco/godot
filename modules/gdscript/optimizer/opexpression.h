@@ -29,4 +29,24 @@ public:
     static bool is_instruction_expression(const Instruction& instruction);
 };
 
+// todo: maybe this should go in controlflow
+class AvailableExpression {
+public:
+    AvailableExpression() : removed(false) {}
+
+    OpExpression expression;
+    int target_address;
+    bool removed;
+
+    bool uses_any(int address0, int address1) {
+        return expression.uses(address0)
+            || expression.uses(address1);
+    }
+
+public:
+    static AvailableExpression* find_available_expression(const FastVector<AvailableExpression>& availables, const OpExpression& expression);
+    static AvailableExpression* find_available_expression_by_target(const FastVector<AvailableExpression>& availables, int target_address);
+};
+
+
 #endif

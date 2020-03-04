@@ -93,3 +93,31 @@ bool OpExpression::is_instruction_expression(const Instruction& instruction) {
             return false;
     }
 }
+
+
+
+AvailableExpression* AvailableExpression::find_available_expression(const FastVector<AvailableExpression>& availables, const OpExpression& expression) {
+    for (int i = 0; i < availables.size(); ++i) {
+        const AvailableExpression& current = availables[i];
+        if (!current.removed) {
+            if (current.expression == expression) {
+                return availables.address_of(i);
+            }
+        }
+    }
+
+    return nullptr;
+}
+
+AvailableExpression* AvailableExpression::find_available_expression_by_target(const FastVector<AvailableExpression>& availables, int target_address) {
+    for (int i = 0; i < availables.size(); ++i) {
+        const AvailableExpression& current = availables[i];
+        if (!current.removed) {
+            if (current.target_address == target_address) {
+                return availables.address_of(i);
+            }
+        }
+    }
+
+    return nullptr;
+}

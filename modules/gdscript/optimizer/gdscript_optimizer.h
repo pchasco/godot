@@ -20,16 +20,32 @@ public:
 	void begin();
 	
 	// Analysis passes
-	void pass_available_expression_analysis();
 	void pass_data_type_analysis();
 
 	// Transform passes
+
+	// Eliminates redundant jumps
 	void pass_jump_threading();
+
+	// Eliminates blocks with no code
 	void pass_dead_block_elimination();
+
+	// Eliminates assignments whose values are never used. Does not
+	// eliminate assignments that may have side effects
 	void pass_dead_assignment_elimination();
+
+	// Eliminates recalculation of expressions whose results are
+	// already known.
 	void pass_local_common_subexpression_elimination();
-	void pass_global_common_subexpression_elimination();
+
+	// Replaces assignments from one address to another when the source
+	// value is the result of an expression with the full expression.
+	// When followed by dead assignment elimination and local common
+	// subexpression elimination, this eliminates many unneeded assignments
 	void pass_local_insert_redundant_operations();
+
+	// Strips debug instructions. Generally unnecessary when GDScript has
+	// been built for release
 	void pass_strip_debug();
 
 	void commit();
@@ -37,7 +53,7 @@ public:
 	ControlFlowGraph *get_cfg() const { return _cfg; }
 
 private:
-	void need_data_flow() {
+	void requires_data_flow() {
 		if (_cfg != nullptr && _is_data_flow_dirty) {
 			_cfg->analyze_data_flow();
 			_is_data_flow_dirty = false;

@@ -2,6 +2,7 @@
 //#include "core/error_macros.h"
 #include "gdscript_optimizer.h"
 #include "modules/gdscript/gdscript_functions.h"
+#include "distinctstack.h"
 
 GDScriptFunctionOptimizer::GDScriptFunctionOptimizer(GDScriptFunction *function) {
     _function = function;
@@ -50,28 +51,12 @@ void GDScriptFunctionOptimizer::pass_strip_debug() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
     Block *exit_block = _cfg->get_exit_block();
 
-    FastVector<int> worklist;
-    FastVector<int> visited;
- 
-    // Don't mess with default argument assignment blocks
-    FastVector<int> defarg_jumps = get_function_default_argument_jump_table(_function);
-    // Although we can change the size of the last of the defarg assignment blocks
-    if (!defarg_jumps.empty()) {
-        defarg_jumps.pop();
-    }
-    for (int i = 0; i < defarg_jumps.size(); ++i) {
-        visited.push(defarg_jumps[i]);
-    }
+    DistinctStack<int> worklist;
 
     worklist.push(entry_block->id);
 
     while(!worklist.empty()) {
         int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
-
-        visited.push(block_id);
 
         Block *block = _cfg->find_block(block_id);
 
@@ -106,33 +91,30 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
 
     Block *entry_block = _cfg->get_entry_block();
-    ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
+    ERR_FAIL_COND_MSG(entry_block == nullptr, "ControlFlowGraph contains no blocks");
 
     Block *exit_block = _cfg->get_exit_block();
 
     bool made_changes = true;
+    bool should_invalidate_data_flow = false;
     while (made_changes) {
         made_changes = false;
 
-        FastVector<int> worklist;
-        FastVector<int> visited;
+        DistinctStack<int> worklist;
         FastVector<int> blocks_to_remove;
+        // Jump tables are generally small and search likely performs better as an unsorted array rather than a Set<>
         FastVector<int> defarg_jumps = get_function_default_argument_jump_table(_function);
 
         worklist.push(entry_block->id);
 
+        // Iterate over all blocks looking for blocks with no code in them.
+        // Any block with no code in it can be removed
         while(!worklist.empty()) {
             int block_id = worklist.pop();
-            if (visited.has(block_id)) {
-                continue;
-            }
-
-            visited.push(block_id);
 
             Block *block = _cfg->find_block(block_id);
 
-            // If this block only contains a jump then we can
-            // remove it if it is not in the default argument jump table (could happen after dead code elimination)
+            // A NORMAL block with no code in it can be removed from the call graph
             if (block->instructions.size() == 0
             && block->block_type == Block::Type::NORMAL
             && block->id != entry_block->id
@@ -156,7 +138,6 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
 
         for (int i = 0; i < blocks_to_remove.size(); ++i) {
             Block *block = _cfg->find_block(blocks_to_remove[i]);
-            // We know there is only one succ block
             Block *succ = _cfg->find_block(block->forward_edges[0]);
 
             // For all blocks jumping to this block, just jump to succ block instead
@@ -164,74 +145,19 @@ void GDScriptFunctionOptimizer::pass_jump_threading() {
                 Block *pred = _cfg->find_block(E->get());
                 pred->replace_jumps(*block, *succ);
             }
-
-            // We don't remove the block from the cfg here. Dead block
-            // removal pass will take care of these.
         }
 
-        if (made_changes) {
-            invalidate_data_flow();
-        }
-    }
-}
-
-int find_alias_index(int *reg_alias, int address) {
-    for (int i = 0; i < GDSCRIPT_FUNCTION_REGISTER_COUNT; ++i) {
-        if (reg_alias[i] == address) {
-            return i;
-        }
+        should_invalidate_data_flow |= made_changes;
     }
 
-    return -1;
-}
-
-class AvailableExpression {
-public:
-    AvailableExpression() : removed(false) {}
-
-    OpExpression expression;
-    int target_address;
-    bool removed;
-
-    bool uses_any(int address0, int address1) {
-        return expression.uses(address0)
-            || expression.uses(address1);
+    if (should_invalidate_data_flow) {
+        invalidate_data_flow();
     }
-};
-
-void GDScriptFunctionOptimizer::pass_available_expression_analysis() {
-
-}
-
-AvailableExpression* find_available_expression(const FastVector<AvailableExpression>& availables, const OpExpression& expression) {
-    for (int i = 0; i < availables.size(); ++i) {
-        const AvailableExpression& current = availables[i];
-        if (!current.removed) {
-            if (current.expression == expression) {
-                return availables.address_of(i);
-            }
-        }
-    }
-
-    return nullptr;
-}
-
-AvailableExpression* find_available_expression_by_target(const FastVector<AvailableExpression>& availables, int target_address) {
-    for (int i = 0; i < availables.size(); ++i) {
-        const AvailableExpression& current = availables[i];
-        if (!current.removed) {
-            if (current.target_address == target_address) {
-                return availables.address_of(i);
-            }
-        }
-    }
-
-    return nullptr;
 }
 
 void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph not initialized");
-    need_data_flow();
+    requires_data_flow();
 
     Block *entry_block = _cfg->get_entry_block();
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
@@ -239,6 +165,7 @@ void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
     Block *exit_block = _cfg->get_exit_block();
 
     bool made_changes = true;
+    bool should_invalidate_data_flow = false;
     while (made_changes) {
         made_changes = false;
 
@@ -291,7 +218,6 @@ void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
                     if ((inst.defuse_mask & INSTRUCTION_DEFUSE_TARGET) != 0) {
                         uses.erase(inst.target_address);
                     }
-
                     if ((inst.defuse_mask & INSTRUCTION_DEFUSE_SOURCE0) != 0) {
                         uses.insert(inst.source_address0);
                     }
@@ -321,9 +247,11 @@ void GDScriptFunctionOptimizer::pass_dead_assignment_elimination() {
             }
         }
 
-        if (made_changes) {
-            invalidate_data_flow();
-        }
+        should_invalidate_data_flow |= made_changes;
+    }
+
+    if (should_invalidate_data_flow) {
+        invalidate_data_flow();
     }
 }
 
@@ -333,24 +261,18 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
     // We need up-to-date data flow for this pass,
     // but this pass will not alter data flow so we will
     // not be invalidating it before exit
-    need_data_flow();
+    requires_data_flow();
 
     Block *entry_block = _cfg->get_entry_block();
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
 
     Block *exit_block = _cfg->get_exit_block();
-    FastVector<int> worklist;
-    FastVector<int> visited;
+    DistinctStack<int> worklist;
 
     worklist.push(entry_block->id);
 
     while(!worklist.empty()) {
         int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
-
-        visited.push(block_id);
 
         Block *block = _cfg->find_block(block_id);
         ERR_FAIL_COND_MSG(block == nullptr, "ControlFlowGraph cannot find block");
@@ -400,7 +322,7 @@ void GDScriptFunctionOptimizer::pass_local_common_subexpression_elimination() {
 
             if (OpExpression::is_instruction_expression(inst)) {
                 OpExpression expr = OpExpression::from_instruction(inst);
-                AvailableExpression* available = find_available_expression(availables, expr);
+                AvailableExpression* available = AvailableExpression::find_available_expression(availables, expr);
                 
                 // Did not find this expression available, so add it to the list
                 if (available == nullptr) {
@@ -487,18 +409,12 @@ void GDScriptFunctionOptimizer::pass_local_insert_redundant_operations() {
     ERR_FAIL_COND_MSG(_cfg == nullptr, "ControlFlowGraph contains no blocks");
 
     Block *exit_block = _cfg->get_exit_block();
-    FastVector<int> worklist;
-    FastVector<int> visited;
+    DistinctStack<int> worklist;
 
     worklist.push(entry_block->id);
 
     while(!worklist.empty()) {
         int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
-
-        visited.push(block_id);
 
         Block *block = _cfg->find_block(block_id);
         ERR_FAIL_COND_MSG(block == nullptr, "ControlFlowGraph cannot find block");
@@ -516,7 +432,7 @@ void GDScriptFunctionOptimizer::pass_local_insert_redundant_operations() {
             bool invalidate = false;
 
             if (inst.opcode == GDScriptFunction::Opcode::OPCODE_ASSIGN) {
-                AvailableExpression* available = find_available_expression_by_target(availables, inst.source_address0);
+                AvailableExpression* available = AvailableExpression::find_available_expression_by_target(availables, inst.source_address0);
                 
                 // If this value is being calculated elsewhere then duplicate
                 // the expression.
@@ -536,7 +452,7 @@ void GDScriptFunctionOptimizer::pass_local_insert_redundant_operations() {
             } else {
                 if (OpExpression::is_instruction_expression(inst)) {
                     OpExpression expr = OpExpression::from_instruction(inst);
-                    AvailableExpression* available = find_available_expression(availables, expr);
+                    AvailableExpression* available = AvailableExpression::find_available_expression(availables, expr);
 
                     // Did not find this expression available, so add it to the list
                     if (available == nullptr) {
@@ -572,8 +488,4 @@ void GDScriptFunctionOptimizer::pass_local_insert_redundant_operations() {
 
         worklist.push_many(block->forward_edges);
     }
-}
-
-void GDScriptFunctionOptimizer::pass_global_common_subexpression_elimination() {
-
 }

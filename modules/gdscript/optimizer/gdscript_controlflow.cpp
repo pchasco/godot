@@ -2,6 +2,7 @@
 #include "modules/gdscript/gdscript_functions.h"
 #include "gdscript_optimizer.h"
 #include "fastvector.h"
+#include "distinctstack.h"
 
 FastVector<int> get_function_default_argument_jump_table(const GDScriptFunction *function) {
     Vector<int> defargs;
@@ -430,19 +431,13 @@ void ControlFlowGraph::analyze_data_flow() {
     // done repeatedly until a loop is completed without any additional changes.
     while (true) {
         bool repeat = false;
-        FastVector<int> worklist;
-        FastVector<int> visited;
+        DistinctStack<int> worklist;
 
         // We walk the CFG in reverse to determine data flow
         worklist.push(_exit_id);
         
         while(!worklist.empty()) {
             int block_id = worklist.pop();
-            if (visited.has(block_id)) {
-                continue;
-            }
-
-            visited.push(block_id);
 
             Block *block = find_block(block_id);
 
@@ -501,8 +496,7 @@ void ControlFlowGraph::analyze_data_flow() {
 }
 
 FastVector<int> ControlFlowGraph::assemble() {
-    FastVector<int> worklist;
-    FastVector<int> visited;
+    DistinctStack<int> worklist;
     FastVector<int> bytecode;
     FastVector<int> blocks_in_order;
     Map<int, int> block_ip_index;
@@ -528,11 +522,6 @@ FastVector<int> ControlFlowGraph::assemble() {
     // after processing
     while (!worklist.empty()) {
         int block_id = worklist.pop();
-        if (visited.has(block_id)) {
-            continue;
-        }
-
-        visited.push(block_id);
 
         Block *block = find_block(block_id);
         if (block == nullptr) {
