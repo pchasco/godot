@@ -46,14 +46,15 @@ class InAppStore : public Object {
 public:
 	Error request_product_info(Variant p_params);
 	Error purchase(Variant p_params);
-
+	Error restore_purchases();
+	bool is_product_purchased(String product_id);
 	int get_pending_event_count();
 	Variant pop_pending_event();
 	void finish_transaction(String product_id);
-	void set_auto_finish_transaction(bool b);
 
 	void _post_event(Variant p_event);
 	void _record_purchase(String product_id);
+
 
 	static InAppStore *get_singleton();
 

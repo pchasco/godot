@@ -37,6 +37,12 @@
 
 #import "GameController/GameController.h"
 
+#ifdef STOREKIT_ENABLED
+extern "C" {
+#import <StoreKit/StoreKit.h>
+};
+#endif
+
 #define kFilteringFactor 0.1
 #define kRenderingFrequency 60
 #define kAccelerometerFrequency 100.0 // Hz
@@ -115,6 +121,8 @@ NSMutableDictionary *ios_joysticks = nil;
 };
 
 - (void)controllerWasConnected:(NSNotification *)notification {
+	return; // This doesn't work on ios because it is being called before the engine is yet set up.
+
 	// create our dictionary if we don't have one yet
 	if (ios_joysticks == nil) {
 		ios_joysticks = [[NSMutableDictionary alloc] init];
@@ -607,6 +615,11 @@ static int frame_count = 0;
 
 	// prevent to stop music in another background app
 	[[AVAudioSession sharedInstance] setCategory:AVAudioSessionCategoryAmbient error:nil];
+
+	// Initialize app store. Per Apple this shoudl be in didFinishLaunchingWithOptions
+#ifdef STOREKIT_ENABLED
+	Globals::get_singleton()->add_singleton(Globals::Singleton("InAppStore", memnew(InAppStore)));
+#endif
 
 	return TRUE;
 };

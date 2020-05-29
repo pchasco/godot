@@ -87,9 +87,6 @@ private:
 #ifdef GAME_CENTER_ENABLED
 	GameCenter *game_center;
 #endif
-#ifdef STOREKIT_ENABLED
-	InAppStore *store_kit;
-#endif
 #ifdef ICLOUD_ENABLED
 	ICloud *icloud;
 #endif

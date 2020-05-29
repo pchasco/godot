@@ -35,9 +35,6 @@ extern "C" {
 #import <StoreKit/StoreKit.h>
 };
 
-bool auto_finish_transactions = true;
-NSMutableDictionary *pending_transactions = [NSMutableDictionary dictionary];
-
 @interface SKProduct (LocalizedPrice)
 @property(nonatomic, readonly) NSString *localizedPrice;
 @end
@@ -57,62 +54,47 @@ NSMutableDictionary *pending_transactions = [NSMutableDictionary dictionary];
 }
 @end
 
-InAppStore *InAppStore::instance = NULL;
-
-void InAppStore::_bind_methods() {
-	ObjectTypeDB::bind_method(_MD("request_product_info"), &InAppStore::request_product_info);
-	ObjectTypeDB::bind_method(_MD("purchase"), &InAppStore::purchase);
-
-	ObjectTypeDB::bind_method(_MD("get_pending_event_count"), &InAppStore::get_pending_event_count);
-	ObjectTypeDB::bind_method(_MD("pop_pending_event"), &InAppStore::pop_pending_event);
-	ObjectTypeDB::bind_method(_MD("finish_transaction"), &InAppStore::finish_transaction);
-	ObjectTypeDB::bind_method(_MD("set_auto_finish_transaction"), &InAppStore::set_auto_finish_transaction);
-};
-
-@interface ProductsDelegate : NSObject <SKProductsRequestDelegate> {
-};
-
+@interface ProductsDelegate : NSObject <SKProductsRequestDelegate>
+// ProductsDelegate doesn't define any additional members
 @end
 
 @implementation ProductsDelegate
 
 - (void)productsRequest:(SKProductsRequest *)request didReceiveResponse:(SKProductsResponse *)response {
-
-	NSArray *products = response.products;
-	Dictionary ret;
-	ret["type"] = "product_info";
-	ret["result"] = "ok";
+	// Build parallel arrays of each property of each item in response
 	StringArray titles;
 	StringArray descriptions;
 	RealArray prices;
 	StringArray ids;
 	StringArray localized_prices;
 
-	for (int i = 0; i < [products count]; i++) {
+	NSArray *products = response.products;
 
+	for (int i = 0; i < [products count]; i++) {
 		SKProduct *product = [products objectAtIndex:i];
 
 		const char *str = [product.localizedTitle UTF8String];
 		titles.push_back(String::utf8(str != NULL ? str : ""));
-
 		str = [product.localizedDescription UTF8String];
 		descriptions.push_back(String::utf8(str != NULL ? str : ""));
 		prices.push_back([product.price doubleValue]);
 		ids.push_back(String::utf8([product.productIdentifier UTF8String]));
 		localized_prices.push_back(String::utf8([product.localizedPrice UTF8String]));
 	};
+
+	StringArray invalid_ids;
+	for (NSString *ipid in response.invalidProductIdentifiers) {
+		invalid_ids.push_back(String::utf8([ipid UTF8String]));
+	};
+
+	Dictionary ret;
+	ret["type"] = "product_info";
+	ret["result"] = "ok";
 	ret["titles"] = titles;
 	ret["descriptions"] = descriptions;
 	ret["prices"] = prices;
 	ret["ids"] = ids;
 	ret["localized_prices"] = localized_prices;
-
-	StringArray invalid_ids;
-
-	for (NSString *ipid in response.invalidProductIdentifiers) {
-
-		invalid_ids.push_back(String::utf8([ipid UTF8String]));
-	};
 	ret["invalid_ids"] = invalid_ids;
 
 	InAppStore::get_singleton()->_post_event(ret);
@@ -122,17 +104,121 @@ void InAppStore::_bind_methods() {
 
 @end
 
-Error InAppStore::request_product_info(Variant p_params) {
 
+@interface TransObserver : NSObject <SKPaymentTransactionObserver>
+- (void) handlePaymentTransactionStatePurchasing:(SKPaymentTransaction *)transaction;
+- (void) handlePaymentTransactionStatePurchased:(SKPaymentTransaction *)transaction;
+- (void) handlePaymentTransactionStateDeferred:(SKPaymentTransaction *)transaction;
+- (void) handlePaymentTransactionStateFailed:(SKPaymentTransaction *)transaction;
+- (void) handlePaymentTransactionStateRestored:(SKPaymentTransaction *)transaction;
+@end
+
+NSMutableDictionary *open_transactions = [[NSMutableDictionary alloc] init];
+
+@implementation TransObserver
+
+- (void) handlePaymentTransactionStatePurchasing:(SKPaymentTransaction *)transaction {
+	NSLog(@"InAppStore: Received: handlePaymentTransactionStatePurchasing");
+}
+
+- (void) handlePaymentTransactionStatePurchased:(SKPaymentTransaction *)transaction {
+	NSLog(@"InAppStore: Received: handlePaymentTransactionStatePurchased");
+
+	String productIdentifier = String::utf8([transaction.payment.productIdentifier UTF8String]);
+	String transactionId = String::utf8([transaction.transactionIdentifier UTF8String]);
+	InAppStore::get_singleton()->_record_purchase(productIdentifier);
+
+	Dictionary ret;
+	ret["type"] = "purchase";
+	ret["result"] = "ok";
+	ret["product_id"] = productIdentifier;
+	ret["transaction_id"] = transactionId;
+
+	InAppStore::get_singleton()->_post_event(ret);
+
+	[open_transactions setObject:transaction forKey:transaction.transactionIdentifier];
+}
+
+- (void) handlePaymentTransactionStateDeferred:(SKPaymentTransaction *)transaction {
+	NSLog(@"InAppStore: Received: handlePaymentTransactionStateDeferred");
+}
+
+- (void) handlePaymentTransactionStateFailed:(SKPaymentTransaction *)transaction {
+	NSLog(@"InAppStore: Received: handlePaymentTransactionStateFailed");
+
+	String pid = String::utf8([transaction.payment.productIdentifier UTF8String]);
+	String errorMessage = String::utf8([transaction.error.localizedDescription UTF8String]);
+	Dictionary event;
+	event["type"] = "purchase";
+	event["result"] = "error";
+	event["product_id"] = pid;
+	event["message"] = errorMessage;
+	InAppStore::get_singleton()->_post_event(event);
+}
+
+- (void) handlePaymentTransactionStateRestored:(SKPaymentTransaction *)transaction {
+	NSLog(@"InAppStore: Received: handlePaymentTransactionStateRestored");
+
+	String transactionId = String::utf8([transaction.transactionIdentifier UTF8String]);
+	String productIdentifier = String::utf8([transaction.originalTransaction.payment.productIdentifier UTF8String]);
+	InAppStore::get_singleton()->_record_purchase(productIdentifier);	
+
+	Dictionary event;
+	event["type"] = "restore";
+	event["result"] = "ok";
+	event["product_id"] = productIdentifier;
+	event["transaction_id"] = transactionId;
+	InAppStore::get_singleton()->_post_event(event);
+}
+
+- (void)paymentQueue:(SKPaymentQueue *)queue updatedTransactions:(NSArray *)transactions {
+	for (SKPaymentTransaction *transaction in transactions) {
+		switch (transaction.transactionState) {
+			case SKPaymentTransactionStatePurchasing:
+				[self handlePaymentTransactionStatePurchasing];
+				break;
+			case SKPaymentTransactionStatePurchased:
+				[self handlePaymentTransactionStatePurchased];
+				break;
+			case SKPaymentTransactionStateDeferred:
+				[self handlePaymentTransactionStateDeferred];
+				break;
+			case SKPaymentTransactionStateFailed: 
+				[self handlePaymentTransactionStateFailed];
+				break;
+			case SKPaymentTransactionStateRestored: 
+				[self handlePaymentTransactionStateRestored];
+				break;
+			default: {
+				NSLog(@"InAppStore: Received unknown SKPaymentTransaction.transactionState %i!\n", (int)transaction.transactionState);
+			}; break;
+		};
+	};
+};
+
+@end
+
+InAppStore *InAppStore::instance = NULL;
+
+void InAppStore::_bind_methods() {
+	ObjectTypeDB::bind_method(_MD("request_product_info"), &InAppStore::request_product_info);
+	ObjectTypeDB::bind_method(_MD("purchase"), &InAppStore::purchase);
+	ObjectTypeDB::bind_method(_MD("restore_purchases"), &InAppStore::restore_purchases);
+	ObjectTypeDB::bind_method(_MD("finish_transaction"), &InAppStore::finish_transaction);
+	ObjectTypeDB::bind_method(_MD("is_product_purchased"), &InAppStore::is_product_purchased);
+
+	ObjectTypeDB::bind_method(_MD("get_pending_event_count"), &InAppStore::get_pending_event_count);
+	ObjectTypeDB::bind_method(_MD("pop_pending_event"), &InAppStore::pop_pending_event);
+};
+
+Error InAppStore::request_product_info(Variant p_params) {
 	Dictionary params = p_params;
 	ERR_FAIL_COND_V(!params.has("product_ids"), ERR_INVALID_PARAMETER);
 
 	StringArray pids = params["product_ids"];
-	printf("************ request product info! %i\n", pids.size());
 
 	NSMutableArray *array = [[[NSMutableArray alloc] initWithCapacity:pids.size()] autorelease];
 	for (int i = 0; i < pids.size(); i++) {
-		printf("******** adding %ls to product list\n", pids[i].c_str());
 		NSString *pid = [[[NSString alloc] initWithUTF8String:pids[i].utf8().get_data()] autorelease];
 		[array addObject:pid];
 	};
@@ -148,108 +234,11 @@ Error InAppStore::request_product_info(Variant p_params) {
 	return OK;
 };
 
-@interface TransObserver : NSObject <SKPaymentTransactionObserver> {
-};
-@end
-
-@implementation TransObserver
-
-- (void)paymentQueue:(SKPaymentQueue *)queue updatedTransactions:(NSArray *)transactions {
-
-	printf("transactions updated!\n");
-	for (SKPaymentTransaction *transaction in transactions) {
-
-		switch (transaction.transactionState) {
-			case SKPaymentTransactionStatePurchased: {
-				printf("status purchased!\n");
-				String pid = String::utf8([transaction.payment.productIdentifier UTF8String]);
-				String transactionId = String::utf8([transaction.transactionIdentifier UTF8String]);
-				InAppStore::get_singleton()->_record_purchase(pid);
-				Dictionary ret;
-				ret["type"] = "purchase";
-				ret["result"] = "ok";
-				ret["product_id"] = pid;
-				ret["transaction_id"] = transactionId;
-
-				NSData *receipt = nil;
-				int sdk_version = 6;
-
-				if ([[[UIDevice currentDevice] systemVersion] floatValue] >= 7.0) {
-
-					NSURL *receiptFileURL = nil;
-					NSBundle *bundle = [NSBundle mainBundle];
-					if ([bundle respondsToSelector:@selector(appStoreReceiptURL)]) {
-
-						// Get the transaction receipt file path location in the app bundle.
-						receiptFileURL = [bundle appStoreReceiptURL];
-
-						// Read in the contents of the transaction file.
-						receipt = [NSData dataWithContentsOfURL:receiptFileURL];
-						sdk_version = 7;
-
-					} else {
-						// Fall back to deprecated transaction receipt,
-						// which is still available in iOS 7.
-
-						// Use SKPaymentTransaction's transactionReceipt.
-						receipt = transaction.transactionReceipt;
-					}
-
-				} else {
-					receipt = transaction.transactionReceipt;
-				}
-
-				NSString *receipt_to_send = nil;
-				if (receipt != nil) {
-					receipt_to_send = [receipt description];
-				}
-				Dictionary receipt_ret;
-				receipt_ret["receipt"] = String::utf8(receipt_to_send != nil ? [receipt_to_send UTF8String] : "");
-				receipt_ret["sdk"] = sdk_version;
-				ret["receipt"] = receipt_ret;
-
-				InAppStore::get_singleton()->_post_event(ret);
-
-				if (auto_finish_transactions) {
-					[[SKPaymentQueue defaultQueue] finishTransaction:transaction];
-				} else {
-					[pending_transactions setObject:transaction forKey:transaction.payment.productIdentifier];
-				}
-
-			}; break;
-			case SKPaymentTransactionStateFailed: {
-				printf("status transaction failed!\n");
-				String pid = String::utf8([transaction.payment.productIdentifier UTF8String]);
-				Dictionary ret;
-				ret["type"] = "purchase";
-				ret["result"] = "error";
-				ret["product_id"] = pid;
-				InAppStore::get_singleton()->_post_event(ret);
-				[[SKPaymentQueue defaultQueue] finishTransaction:transaction];
-			}; break;
-			case SKPaymentTransactionStateRestored: {
-				printf("status transaction restored!\n");
-				String pid = String::utf8([transaction.originalTransaction.payment.productIdentifier UTF8String]);
-				InAppStore::get_singleton()->_record_purchase(pid);
-				[[SKPaymentQueue defaultQueue] finishTransaction:transaction];
-			}; break;
-			default: {
-				printf("status default %i!\n", (int)transaction.transactionState);
-
-			}; break;
-		};
-	};
-};
-
-@end
-
 Error InAppStore::purchase(Variant p_params) {
-
 	ERR_FAIL_COND_V(![SKPaymentQueue canMakePayments], ERR_UNAVAILABLE);
 	if (![SKPaymentQueue canMakePayments])
 		return ERR_UNAVAILABLE;
 
-	printf("purchasing!\n");
 	Dictionary params = p_params;
 	ERR_FAIL_COND_V(!params.has("product_id"), ERR_INVALID_PARAMETER);
 
@@ -257,63 +246,67 @@ Error InAppStore::purchase(Variant p_params) {
 	SKPayment *payment = [SKPayment paymentWithProductIdentifier:pid];
 	SKPaymentQueue *defq = [SKPaymentQueue defaultQueue];
 	[defq addPayment:payment];
-	printf("purchase sent!\n");
 
 	return OK;
 };
+
+Error InAppStore::restore_purchases() {
+	[[SKPaymentQueue defaultQueue] restoreCompletedTransactions];
+}
 
 int InAppStore::get_pending_event_count() {
 	return pending_events.size();
 };
 
 Variant InAppStore::pop_pending_event() {
+	if (pending_events.size() == 0) {
+		Variant empty;
+		return empty;
+	}
 
 	Variant front = pending_events.front()->get();
 	pending_events.pop_front();
-
 	return front;
 };
 
 void InAppStore::_post_event(Variant p_event) {
-
 	pending_events.push_back(p_event);
 };
 
 void InAppStore::_record_purchase(String product_id) {
-
 	String skey = "purchased/" + product_id;
 	NSString *key = [[[NSString alloc] initWithUTF8String:skey.utf8().get_data()] autorelease];
 	[[NSUserDefaults standardUserDefaults] setBool:YES forKey:key];
 	[[NSUserDefaults standardUserDefaults] synchronize];
 };
 
-InAppStore *InAppStore::get_singleton() {
+bool InAppStore::is_product_purchased(String product_id) {
+	String skey = "purchased/" + product_id;
+	NSString *key = [[[NSString alloc] initWithUTF8String:skey.utf8().get_data()] autorelease];
+	return (bool)[[NSUserDefaults standardUserDefaults] boolForKey:key];
+}
 
+InAppStore *InAppStore::get_singleton() {
 	return instance;
 };
 
 InAppStore::InAppStore() {
 	ERR_FAIL_COND(instance != NULL);
 	instance = this;
-	auto_finish_transactions = false;
 
 	TransObserver *observer = [[TransObserver alloc] init];
 	[[SKPaymentQueue defaultQueue] addTransactionObserver:observer];
-	//pending_transactions = [NSMutableDictionary dictionary];
 };
 
-void InAppStore::finish_transaction(String product_id) {
-	NSString *prod_id = [NSString stringWithCString:product_id.utf8().get_data() encoding:NSUTF8StringEncoding];
+void InAppStore::finish_transaction(String transaction_id) {
+	NSString *tid = [NSString stringWithCString:transaction_id.utf8().get_data() encoding:NSUTF8StringEncoding];
 
-	if ([pending_transactions objectForKey:prod_id]) {
-		[[SKPaymentQueue defaultQueue] finishTransaction:[pending_transactions objectForKey:prod_id]];
-		[pending_transactions removeObjectForKey:prod_id];
+	NSObject *transaction = [open_transactions objectForKey:tid];
+	if (transaction) {
+		[[SKPaymentQueue defaultQueue] finishTransaction:transaction];
+		[open_transactions removeObjectForKey:tid];
 	}
 };
-
-void InAppStore::set_auto_finish_transaction(bool b) {
-	auto_finish_transactions = b;
-}
 
 InAppStore::~InAppStore(){
 
