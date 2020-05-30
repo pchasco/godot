@@ -158,7 +158,6 @@ extern "C" {
 
 	String transactionId = String::utf8([transaction.transactionIdentifier UTF8String]);
 	String productIdentifier = String::utf8([transaction.originalTransaction.payment.productIdentifier UTF8String]);
-	InAppStore::get_singleton()->_record_purchase(productIdentifier);	
 
 	Dictionary event;
 	event["type"] = "restore";
@@ -202,7 +201,6 @@ void InAppStore::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("purchase"), &InAppStore::purchase);
 	ObjectTypeDB::bind_method(_MD("restore_purchases"), &InAppStore::restore_purchases);
 	ObjectTypeDB::bind_method(_MD("finish_transaction"), &InAppStore::finish_transaction);
-	ObjectTypeDB::bind_method(_MD("is_product_purchased"), &InAppStore::is_product_purchased);
 	ObjectTypeDB::bind_method(_MD("can_user_make_payments"), &InAppStore::can_user_make_payments);
 	ObjectTypeDB::bind_method(_MD("get_pending_event_count"), &InAppStore::get_pending_event_count);
 	ObjectTypeDB::bind_method(_MD("pop_pending_event"), &InAppStore::pop_pending_event);
@@ -270,19 +268,6 @@ void InAppStore::_post_event(Variant p_event) {
 	pending_events.push_back(p_event);
 };
 
-void InAppStore::_record_purchase(String product_id) {
-	String skey = "purchased/" + product_id;
-	NSString *key = [[[NSString alloc] initWithUTF8String:skey.utf8().get_data()] autorelease];
-	[[NSUserDefaults standardUserDefaults] setBool:YES forKey:key];
-	[[NSUserDefaults standardUserDefaults] synchronize];
-};
-
-bool InAppStore::is_product_purchased(String product_id) {
-	String skey = "purchased/" + product_id;
-	NSString *key = [[[NSString alloc] initWithUTF8String:skey.utf8().get_data()] autorelease];
-	return (bool)[[NSUserDefaults standardUserDefaults] boolForKey:key];
-}
-
 bool InAppStore::can_user_make_payments() {
 	return [SKPaymentQueue canMakePayments];
 }
@@ -299,7 +284,6 @@ void InAppStore::finish_transaction(String transaction_id) {
 		if (transaction_id == thisTransactionId) {
 			NSLog(@"-- Match! Finishing transaction");
 			String productIdentifier = String::utf8([transaction.payment.productIdentifier UTF8String]);
-			InAppStore::get_singleton()->_record_purchase(productIdentifier);
 			[[SKPaymentQueue defaultQueue] finishTransaction:transaction];
 		}
 	}
