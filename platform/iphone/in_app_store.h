@@ -55,6 +55,8 @@ public:
 	bool can_user_make_payments();
 	void _post_event(Variant p_event);
 
+	void request_review();
+
 	static InAppStore *get_singleton();
 };
 

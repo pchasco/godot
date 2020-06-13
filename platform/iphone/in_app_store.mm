@@ -204,6 +204,7 @@ void InAppStore::_bind_methods() {
 	ObjectTypeDB::bind_method(_MD("can_user_make_payments"), &InAppStore::can_user_make_payments);
 	ObjectTypeDB::bind_method(_MD("get_pending_event_count"), &InAppStore::get_pending_event_count);
 	ObjectTypeDB::bind_method(_MD("pop_pending_event"), &InAppStore::pop_pending_event);
+	ObjectTypeDB::bind_method(_MD("request_review"), &InAppStore::request_review);
 };
 
 Error InAppStore::request_product_info(Variant p_params) {
@@ -288,6 +289,10 @@ void InAppStore::finish_transaction(String transaction_id) {
 		}
 	}
 };
+
+void InAppStore::request_review() {
+	[SKStoreReviewController requestReview];
+}
 
 InAppStore *InAppStore::get_singleton() {
 	return instance;
