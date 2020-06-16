@@ -76,14 +76,17 @@ Error GameCenter::connect() {
 	//this handler is called serveral times.  first when the view needs to be shown, then again after the view is cancelled or the user logs in.  or if the user's already logged in, it's called just once to confirm they're authenticated.  This is why no result needs to be specified in the presentViewController phase. in this case, more calls to this function will follow.
 	player.authenticateHandler = (^(UIViewController *controller, NSError *error) {
 		if (controller) {
+			NSLog(@"GameCenter: authenticateHandler got viewController");
 			[root_controller presentViewController:controller animated:YES completion:nil];
 		} else {
 			Dictionary ret;
 			ret["type"] = "authentication";
 			if (player.isAuthenticated) {
+				NSLog(@"GameCenter: authenticateHandler isAuthenticated == true");
 				ret["result"] = "ok";
 				GameCenter::get_singleton()->connected = true;
 			} else {
+				NSLog(@"GameCenter: authenticateHandler isAuthenticated == false");
 				ret["result"] = "error";
 				ret["error_code"] = error.code;
 				ret["error_description"] = [error.localizedDescription UTF8String];
@@ -306,6 +309,16 @@ Error GameCenter::show_game_center(Variant p_params) {
 			String name = params["leaderboard_name"];
 			NSString *name_str = [[[NSString alloc] initWithUTF8String:name.utf8().get_data()] autorelease];
 			controller.leaderboardIdentifier = name_str;
+		}
+		if (params.has("time_scope")) {
+			String scope = params["time_scope"];
+			if (scope == "day") {
+				controller.leaderboardTimeScope = GKLeaderboardTimeScopeToday;
+			} else if (scope == "week") {
+				controller.leaderboardTimeScope = GKLeaderboardTimeScopeWeek;
+			} else {
+				controller.leaderboardTimeScope = GKLeaderboardTimeScopeAllTime;
+			}
 		}
 	}
 
