@@ -38,6 +38,7 @@
 #include "game_center.h"
 #include "icloud.h"
 #include "in_app_store.h"
+#include "haptic.h"
 #include "main/input_default.h"
 #include "servers/audio/audio_server_sw.h"
 #include "servers/audio/sample_manager_sw.h"

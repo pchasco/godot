@@ -163,6 +163,7 @@ void OSIPhone::initialize(const VideoMode &p_desired, int p_video_driver, int p_
 //icloud->connect();
 #endif
 	Globals::get_singleton()->add_singleton(Globals::Singleton("iOS", memnew(iOS)));
+	Globals::get_singleton()->add_singleton(Globals::Singleton("Haptic", memnew(Haptic)));
 };
 
 MainLoop *OSIPhone::get_main_loop() const {
